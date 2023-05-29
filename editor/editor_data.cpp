@@ -300,7 +300,7 @@ void EditorData::get_editor_breakpoints(List<String> *p_breakpoints) {
 	}
 }
 
-Dictionary EditorData::get_editor_states() const {
+Dictionary EditorData::get_editor_plugin_states() const {
 	Dictionary metadata;
 	for (int i = 0; i < editor_plugins.size(); i++) {
 		Dictionary state = editor_plugins[i]->get_state();
@@ -319,7 +319,7 @@ Dictionary EditorData::get_scene_editor_states(int p_idx) const {
 	return es.editor_states;
 }
 
-void EditorData::set_editor_states(const Dictionary &p_states) {
+void EditorData::set_editor_plugin_states(const Dictionary &p_states) {
 	if (p_states.is_empty()) {
 		for (EditorPlugin *ep : editor_plugins) {
 			ep->clear();
@@ -483,6 +483,24 @@ int EditorData::get_editor_plugin_count() const {
 EditorPlugin *EditorData::get_editor_plugin(int p_idx) {
 	ERR_FAIL_INDEX_V(p_idx, editor_plugins.size(), nullptr);
 	return editor_plugins[p_idx];
+}
+
+void EditorData::add_extension_editor_plugin(const StringName &p_class_name, EditorPlugin *p_plugin) {
+	ERR_FAIL_COND(extension_editor_plugins.has(p_class_name));
+	extension_editor_plugins.insert(p_class_name, p_plugin);
+}
+
+void EditorData::remove_extension_editor_plugin(const StringName &p_class_name) {
+	extension_editor_plugins.erase(p_class_name);
+}
+
+bool EditorData::has_extension_editor_plugin(const StringName &p_class_name) {
+	return extension_editor_plugins.has(p_class_name);
+}
+
+EditorPlugin *EditorData::get_extension_editor_plugin(const StringName &p_class_name) {
+	EditorPlugin **plugin = extension_editor_plugins.getptr(p_class_name);
+	return plugin == nullptr ? nullptr : *plugin;
 }
 
 void EditorData::add_custom_type(const String &p_type, const String &p_inherits, const Ref<Script> &p_script, const Ref<Texture2D> &p_icon) {
@@ -891,7 +909,7 @@ void EditorData::save_edited_scene_state(EditorSelection *p_selection, EditorSel
 	es.selection = p_selection->get_full_selected_node_list();
 	es.history_current = p_history->current_elem_idx;
 	es.history_stored = p_history->history;
-	es.editor_states = get_editor_states();
+	es.editor_states = get_editor_plugin_states();
 	es.custom_state = p_custom;
 }
 
@@ -907,7 +925,7 @@ Dictionary EditorData::restore_edited_scene_state(EditorSelection *p_selection, 
 	for (Node *E : es.selection) {
 		p_selection->add_node(E);
 	}
-	set_editor_states(es.editor_states);
+	set_editor_plugin_states(es.editor_states);
 
 	return es.custom_state;
 }

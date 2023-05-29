@@ -3578,6 +3578,13 @@ void SceneTreeDock::_list_all_subresources(PopupMenu *p_menu) {
 			p_menu->set_item_metadata(-1, pair.first->get_instance_id());
 		}
 	}
+
+	if (resources_by_type.is_empty()) {
+		p_menu->add_item(TTR("None"));
+		p_menu->set_item_disabled(-1, true);
+	}
+
+	p_menu->reset_size();
 }
 
 void SceneTreeDock::_gather_resources(Node *p_node, List<Pair<Ref<Resource>, Node *>> &r_resources) {
@@ -3601,6 +3608,11 @@ void SceneTreeDock::_gather_resources(Node *p_node, List<Pair<Ref<Resource>, Nod
 		}
 		Ref<Resource> res = value;
 		if (res.is_null()) {
+			continue;
+		}
+
+		if (!res->is_built_in() || res->get_path().get_slice("::", 0) != edited_scene->get_scene_file_path()) {
+			// Ignore external and foreign resources.
 			continue;
 		}
 

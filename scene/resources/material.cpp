@@ -82,6 +82,23 @@ void Material::_validate_property(PropertyInfo &p_property) const {
 	}
 }
 
+void Material::_mark_initialized(const Callable &p_queue_shader_change_callable) {
+	// If this is happening as part of resource loading, it is not safe to queue the update
+	// as an addition to the dirty list, unless the load is happening on the main thread.
+	if (ResourceLoader::is_within_load() && Thread::get_caller_id() != Thread::get_main_id()) {
+		DEV_ASSERT(init_state != INIT_STATE_READY);
+		if (init_state == INIT_STATE_UNINITIALIZED) { // Prevent queueing twice.
+			// Queue an individual update of this material (the ResourceLoader knows how to handle deferred calls safely).
+			p_queue_shader_change_callable.call_deferred();
+			init_state = INIT_STATE_INITIALIZING;
+		}
+	} else {
+		// Straightforward conditions.
+		init_state = INIT_STATE_READY;
+		p_queue_shader_change_callable.callv(Array());
+	}
+}
+
 void Material::inspect_native_shader_code() {
 	SceneTree *st = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop());
 	RID shader = get_shader_rid();
@@ -458,13 +475,11 @@ ShaderMaterial::~ShaderMaterial() {
 /////////////////////////////////
 
 Mutex BaseMaterial3D::material_mutex;
-SelfList<BaseMaterial3D>::List *BaseMaterial3D::dirty_materials = nullptr;
+SelfList<BaseMaterial3D>::List BaseMaterial3D::dirty_materials;
 HashMap<BaseMaterial3D::MaterialKey, BaseMaterial3D::ShaderData, BaseMaterial3D::MaterialKey> BaseMaterial3D::shader_map;
 BaseMaterial3D::ShaderNames *BaseMaterial3D::shader_names = nullptr;
 
 void BaseMaterial3D::init_shaders() {
-	dirty_materials = memnew(SelfList<BaseMaterial3D>::List);
-
 	shader_names = memnew(ShaderNames);
 
 	shader_names->albedo = "albedo";
@@ -551,14 +566,14 @@ HashMap<uint64_t, Ref<StandardMaterial3D>> BaseMaterial3D::materials_for_2d;
 void BaseMaterial3D::finish_shaders() {
 	materials_for_2d.clear();
 
-	memdelete(dirty_materials);
-	dirty_materials = nullptr;
+	dirty_materials.clear();
 
 	memdelete(shader_names);
+	shader_names = nullptr;
 }
 
 void BaseMaterial3D::_update_shader() {
-	dirty_materials->remove(&element);
+	dirty_materials.remove(&element);
 
 	MaterialKey mk = _compute_key();
 	if (mk == current_key) {
@@ -1477,16 +1492,16 @@ void BaseMaterial3D::_update_shader() {
 void BaseMaterial3D::flush_changes() {
 	MutexLock lock(material_mutex);
 
-	while (dirty_materials->first()) {
-		dirty_materials->first()->self()->_update_shader();
+	while (dirty_materials.first()) {
+		dirty_materials.first()->self()->_update_shader();
 	}
 }
 
 void BaseMaterial3D::_queue_shader_change() {
 	MutexLock lock(material_mutex);
 
-	if (is_initialized && !element.in_list()) {
-		dirty_materials->add(&element);
+	if (_is_initialized() && !element.in_list()) {
+		dirty_materials.add(&element);
 	}
 }
 
@@ -3028,8 +3043,7 @@ BaseMaterial3D::BaseMaterial3D(bool p_orm) :
 	flags[FLAG_ALBEDO_TEXTURE_MSDF] = false;
 	flags[FLAG_USE_TEXTURE_REPEAT] = true;
 
-	is_initialized = true;
-	_queue_shader_change();
+	_mark_initialized(callable_mp(this, &BaseMaterial3D::_queue_shader_change));
 }
 
 BaseMaterial3D::~BaseMaterial3D() {

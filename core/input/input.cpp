@@ -542,6 +542,7 @@ void Input::_parse_input_event_impl(const Ref<InputEvent> &p_event, bool p_is_em
 			Ref<InputEventScreenTouch> touch_event;
 			touch_event.instantiate();
 			touch_event->set_pressed(mb->is_pressed());
+			touch_event->set_canceled(mb->is_canceled());
 			touch_event->set_position(mb->get_position());
 			touch_event->set_double_tap(mb->is_double_click());
 			touch_event->set_device(InputEvent::DEVICE_ID_EMULATION);
@@ -613,6 +614,7 @@ void Input::_parse_input_event_impl(const Ref<InputEvent> &p_event, bool p_is_em
 				button_event->set_position(st->get_position());
 				button_event->set_global_position(st->get_position());
 				button_event->set_pressed(st->is_pressed());
+				button_event->set_canceled(st->is_canceled());
 				button_event->set_button_index(MouseButton::LEFT);
 				button_event->set_double_click(st->is_double_tap());
 
@@ -847,6 +849,7 @@ bool Input::is_emulating_touch_from_mouse() const {
 // Calling this whenever the game window is focused helps unsticking the "touch mouse"
 // if the OS or its abstraction class hasn't properly reported that touch pointers raised
 void Input::ensure_touch_mouse_raised() {
+	_THREAD_SAFE_METHOD_
 	if (mouse_from_touch_index != -1) {
 		mouse_from_touch_index = -1;
 

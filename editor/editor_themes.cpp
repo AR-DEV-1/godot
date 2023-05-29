@@ -63,7 +63,7 @@ void EditorColorMap::create() {
 
 	add_conversion_color_pair("#ffffff", "#414141"); // Pure white
 	add_conversion_color_pair("#000000", "#bfbfbf"); // Pure black
-	// Keep pure RGB colors as is, but list them for explicitly.
+	// Keep pure RGB colors as is, but list them for explicitness.
 	add_conversion_color_pair("#ff0000", "#ff0000"); // Pure red
 	add_conversion_color_pair("#00ff00", "#00ff00"); // Pure green
 	add_conversion_color_pair("#0000ff", "#0000ff"); // Pure blue
@@ -107,10 +107,11 @@ void EditorColorMap::create() {
 	add_conversion_color_pair("#dbee15", "#b7d10a"); // Color track yellow
 	add_conversion_color_pair("#288027", "#218309"); // Color track green
 
-	// Resource groups
+	// Other objects
 	add_conversion_color_pair("#ffca5f", "#fea900"); // Mesh resource (orange)
 	add_conversion_color_pair("#2998ff", "#68b6ff"); // Shape resource (blue)
 	add_conversion_color_pair("#a2d2ff", "#4998e3"); // Shape resource (light blue)
+	add_conversion_color_pair("#69c4d4", "#29a3cc"); // Input event highlight (light blue)
 
 	// Animation editor tracks
 	// The property track icon color is set by the common icon color.
@@ -136,22 +137,25 @@ void EditorColorMap::create() {
 	// Variant types
 	add_conversion_color_pair("#41ecad", "#25e3a0"); // Variant
 	add_conversion_color_pair("#6f91f0", "#6d8eeb"); // bool
-	add_conversion_color_pair("#5abbef", "#4fb2e9"); // int
+	add_conversion_color_pair("#5abbef", "#4fb2e9"); // int/uint
 	add_conversion_color_pair("#35d4f4", "#27ccf0"); // float
 	add_conversion_color_pair("#4593ec", "#4690e7"); // String
-	add_conversion_color_pair("#ac73f1", "#ad76ee"); // Vector2
-	add_conversion_color_pair("#f1738f", "#ee758e"); // Rect2
-	add_conversion_color_pair("#de66f0", "#dc6aed"); // Vector3
-	add_conversion_color_pair("#b9ec41", "#96ce1a"); // Transform2D
-	add_conversion_color_pair("#f74949", "#f77070"); // Plane
-	add_conversion_color_pair("#ec418e", "#ec69a3"); // Quaternion
 	add_conversion_color_pair("#ee5677", "#ee7991"); // AABB
+	add_conversion_color_pair("#e0e0e0", "#5a5a5a"); // Array
 	add_conversion_color_pair("#e1ec41", "#b2bb19"); // Basis
-	add_conversion_color_pair("#f68f45", "#f49047"); // Transform3D
-	add_conversion_color_pair("#417aec", "#6993ec"); // NodePath
-	add_conversion_color_pair("#41ec80", "#2ce573"); // RID
-	add_conversion_color_pair("#55f3e3", "#12d5c3"); // Object
 	add_conversion_color_pair("#54ed9e", "#57e99f"); // Dictionary
+	add_conversion_color_pair("#417aec", "#6993ec"); // NodePath
+	add_conversion_color_pair("#55f3e3", "#12d5c3"); // Object
+	add_conversion_color_pair("#f74949", "#f77070"); // Plane
+	add_conversion_color_pair("#44bd44", "#46b946"); // Projection
+	add_conversion_color_pair("#ec418e", "#ec69a3"); // Quaternion
+	add_conversion_color_pair("#f1738f", "#ee758e"); // Rect2
+	add_conversion_color_pair("#41ec80", "#2ce573"); // RID
+	add_conversion_color_pair("#b9ec41", "#96ce1a"); // Transform2D
+	add_conversion_color_pair("#f68f45", "#f49047"); // Transform3D
+	add_conversion_color_pair("#ac73f1", "#ad76ee"); // Vector2
+	add_conversion_color_pair("#de66f0", "#dc6aed"); // Vector3
+	add_conversion_color_pair("#f066bd", "#ed6abd"); // Vector4
 
 	// Visual shaders
 	add_conversion_color_pair("#77ce57", "#67c046"); // Vector funcs
@@ -278,6 +282,7 @@ float get_gizmo_handle_scale(const String &gizmo_handle_name = "") {
 }
 
 void editor_register_and_generate_icons(Ref<Theme> p_theme, bool p_dark_theme, float p_icon_saturation, int p_thumb_size, bool p_only_thumbs = false) {
+	OS::get_singleton()->benchmark_begin_measure("editor_register_and_generate_icons_" + String((p_only_thumbs ? "with_only_thumbs" : "all")));
 	// Before we register the icons, we adjust their colors and saturation.
 	// Most icons follow the standard rules for color conversion to follow the editor
 	// theme's polarity (dark/light). We also adjust the saturation for most icons,
@@ -405,9 +410,11 @@ void editor_register_and_generate_icons(Ref<Theme> p_theme, bool p_dark_theme, f
 			p_theme->set_icon(editor_icons_names[index], SNAME("EditorIcons"), icon);
 		}
 	}
+	OS::get_singleton()->benchmark_end_measure("editor_register_and_generate_icons_" + String((p_only_thumbs ? "with_only_thumbs" : "all")));
 }
 
 Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
+	OS::get_singleton()->benchmark_begin_measure("create_editor_theme");
 	Ref<Theme> theme = Ref<Theme>(memnew(Theme));
 
 	// Controls may rely on the scale for their internal drawing logic.
@@ -833,6 +840,8 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 
 	// Script Editor
 	theme->set_stylebox("ScriptEditorPanel", "EditorStyles", make_empty_stylebox(default_margin_size, 0, default_margin_size, default_margin_size));
+	theme->set_stylebox("ScriptEditorPanelFloating", "EditorStyles", make_empty_stylebox(0, 0, 0, 0));
+
 	theme->set_stylebox("ScriptEditor", "EditorStyles", make_empty_stylebox(0, 0, 0, 0));
 
 	// Launch Pad and Play buttons
@@ -2088,10 +2097,13 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_color("search_result_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/search_result_color"));
 	theme->set_color("search_result_border_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/search_result_border_color"));
 
+	OS::get_singleton()->benchmark_end_measure("create_editor_theme");
+
 	return theme;
 }
 
 Ref<Theme> create_custom_theme(const Ref<Theme> p_theme) {
+	OS::get_singleton()->benchmark_begin_measure("create_custom_theme");
 	Ref<Theme> theme = create_editor_theme(p_theme);
 
 	const String custom_theme_path = EDITOR_GET("interface/theme/custom_theme");
@@ -2102,6 +2114,7 @@ Ref<Theme> create_custom_theme(const Ref<Theme> p_theme) {
 		}
 	}
 
+	OS::get_singleton()->benchmark_end_measure("create_custom_theme");
 	return theme;
 }
 

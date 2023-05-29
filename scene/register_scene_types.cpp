@@ -465,6 +465,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(AnimationNodeAdd3);
 	GDREGISTER_CLASS(AnimationNodeBlend2);
 	GDREGISTER_CLASS(AnimationNodeBlend3);
+	GDREGISTER_CLASS(AnimationNodeSub2);
 	GDREGISTER_CLASS(AnimationNodeTimeScale);
 	GDREGISTER_CLASS(AnimationNodeTimeSeek);
 	GDREGISTER_CLASS(AnimationNodeTransition);
@@ -1140,6 +1141,10 @@ void register_scene_types() {
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/2d_navigation"), i + 1), "");
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_physics"), i + 1), "");
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_navigation"), i + 1), "");
+	}
+
+	for (int i = 0; i < 32; i++) {
+		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/avoidance"), i + 1), "");
 	}
 
 	if (RenderingServer::get_singleton()) {

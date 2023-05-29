@@ -41,7 +41,6 @@ typedef void (*EditorPluginInitializeCallback)();
 typedef bool (*EditorBuildCallback)();
 
 class AcceptDialog;
-class AcceptDialogAutoReparent;
 class CenterContainer;
 class CheckBox;
 class ColorPicker;
@@ -113,6 +112,7 @@ class ProjectSettingsEditor;
 class RunSettingsDialog;
 class SceneImportSettings;
 class ScriptCreateDialog;
+class WindowWrapper;
 
 class EditorNode : public Node {
 	GDCLASS(EditorNode, Node);
@@ -225,6 +225,7 @@ private:
 		HELP_DOCS,
 		HELP_QA,
 		HELP_REPORT_A_BUG,
+		HELP_COPY_SYSTEM_INFO,
 		HELP_SUGGEST_A_FEATURE,
 		HELP_SEND_DOCS_FEEDBACK,
 		HELP_COMMUNITY,
@@ -358,10 +359,10 @@ private:
 	PluginConfigDialog *plugin_config_dialog = nullptr;
 
 	RichTextLabel *load_errors = nullptr;
-	AcceptDialogAutoReparent *load_error_dialog = nullptr;
+	AcceptDialog *load_error_dialog = nullptr;
 
 	RichTextLabel *execute_outputs = nullptr;
-	AcceptDialogAutoReparent *execute_output_dialog = nullptr;
+	AcceptDialog *execute_output_dialog = nullptr;
 
 	Ref<Theme> theme;
 
@@ -376,10 +377,10 @@ private:
 	ConfirmationDialog *import_confirmation = nullptr;
 	ConfirmationDialog *pick_main_scene = nullptr;
 	Button *select_current_scene_button = nullptr;
-	AcceptDialogAutoReparent *accept = nullptr;
-	AcceptDialogAutoReparent *save_accept = nullptr;
+	AcceptDialog *accept = nullptr;
+	AcceptDialog *save_accept = nullptr;
 	EditorAbout *about = nullptr;
-	AcceptDialogAutoReparent *warning = nullptr;
+	AcceptDialog *warning = nullptr;
 
 	int overridden_default_layout = -1;
 	Ref<ConfigFile> default_layout;
@@ -420,7 +421,7 @@ private:
 	Button *new_inherited_button = nullptr;
 	String open_import_request;
 
-	Vector<Control *> floating_docks;
+	Vector<WindowWrapper *> floating_docks;
 
 	Button *dock_float = nullptr;
 	Button *dock_tab_move_left = nullptr;
@@ -429,7 +430,7 @@ private:
 	PopupPanel *dock_select_popup = nullptr;
 	Rect2 dock_select_rect[DOCK_SLOT_MAX];
 	TabContainer *dock_slot[DOCK_SLOT_MAX];
-	Timer *dock_drag_timer = nullptr;
+	Timer *editor_layout_save_delay_timer = nullptr;
 	bool docks_visible = true;
 	int dock_popup_selected_idx = -1;
 	int dock_select_rect_over_idx = -1;
@@ -503,12 +504,14 @@ private:
 	static int plugin_init_callback_count;
 	static Vector<EditorNodeInitCallback> _init_callbacks;
 
-	static void _dependency_error_report(void *ud, const String &p_path, const String &p_dep, const String &p_type) {
-		EditorNode *en = static_cast<EditorNode *>(ud);
-		if (!en->dependency_errors.has(p_path)) {
-			en->dependency_errors[p_path] = HashSet<String>();
+	String _get_system_info() const;
+
+	static void _dependency_error_report(const String &p_path, const String &p_dep, const String &p_type) {
+		DEV_ASSERT(Thread::get_caller_id() == Thread::get_main_id());
+		if (!singleton->dependency_errors.has(p_path)) {
+			singleton->dependency_errors[p_path] = HashSet<String>();
 		}
-		en->dependency_errors[p_path].insert(p_dep + "::" + p_type);
+		singleton->dependency_errors[p_path].insert(p_dep + "::" + p_type);
 	}
 
 	static Ref<Texture2D> _file_dialog_get_icon(const String &p_path);
@@ -517,10 +520,11 @@ private:
 	static void _editor_file_dialog_register(EditorFileDialog *p_dialog);
 	static void _editor_file_dialog_unregister(EditorFileDialog *p_dialog);
 
-	static void _load_error_notify(void *p_ud, const String &p_text);
 	static void _file_access_close_error_notify(const String &p_str);
+	static void _file_access_close_error_notify_impl(const String &p_str);
 
 	static void _print_handler(void *p_this, const String &p_string, bool p_error, bool p_rich);
+	static void _print_handler_impl(const String &p_string, bool p_error, bool p_rich);
 	static void _resource_saved(Ref<Resource> p_resource, const String &p_path);
 	static void _resource_loaded(Ref<Resource> p_resource, const String &p_path);
 
@@ -558,8 +562,8 @@ private:
 	void _node_renamed();
 	void _editor_select_next();
 	void _editor_select_prev();
-	void _set_scene_metadata(const String &p_file, int p_idx = -1);
-	void _get_scene_metadata(const String &p_file);
+	void _save_editor_states(const String &p_file, int p_idx = -1);
+	void _load_editor_plugin_states_from_config(const Ref<ConfigFile> &p_config_file);
 	void _update_title();
 	void _update_scene_tabs();
 	void _version_control_menu_option(int p_idx);
@@ -628,8 +632,9 @@ private:
 	void _dock_pre_popup(int p_which);
 	void _dock_split_dragged(int ofs);
 	void _dock_popup_exit();
-	void _dock_floating_close_request(Control *p_control);
-	void _dock_make_float();
+	void _dock_floating_close_request(WindowWrapper *p_wrapper);
+	void _dock_make_selected_float();
+	void _dock_make_float(Control *p_control, int p_slot_index, bool p_show_window = true);
 	void _scene_tab_changed(int p_tab);
 	void _proceed_closing_scene_tabs();
 	bool _is_closing_editor() const;
@@ -646,15 +651,19 @@ private:
 
 	int _get_current_main_editor();
 
-	void _save_docks();
-	void _load_docks();
+	void _save_editor_layout();
+	void _load_editor_layout();
 	void _save_docks_to_config(Ref<ConfigFile> p_layout, const String &p_section);
+	void _restore_floating_dock(const Dictionary &p_dock_dump, Control *p_wrapper, int p_slot_index);
 	void _load_docks_from_config(Ref<ConfigFile> p_layout, const String &p_section);
 	void _update_dock_slots_visibility(bool p_keep_selected_tabs = false);
 	void _dock_tab_changed(int p_tab);
 
-	void _save_open_scenes_to_config(Ref<ConfigFile> p_layout, const String &p_section);
-	void _load_open_scenes_from_config(Ref<ConfigFile> p_layout, const String &p_section);
+	void _save_central_editor_layout_to_config(Ref<ConfigFile> p_config_file);
+	void _load_central_editor_layout_from_config(Ref<ConfigFile> p_config_file);
+
+	void _save_open_scenes_to_config(Ref<ConfigFile> p_layout);
+	void _load_open_scenes_from_config(Ref<ConfigFile> p_layout);
 
 	void _update_layouts_menu();
 	void _layout_menu_option(int p_id);
@@ -688,8 +697,6 @@ private:
 	void _bottom_panel_raise_toggled(bool);
 
 	void _begin_first_scan();
-	bool use_startup_benchmark = false;
-	String startup_benchmark_file;
 
 protected:
 	friend class FileSystemDock;
@@ -734,6 +741,9 @@ public:
 
 	static void add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed = false);
 	static void remove_editor_plugin(EditorPlugin *p_editor, bool p_config_changed = false);
+
+	static void add_extension_editor_plugin(const StringName &p_class_name);
+	static void remove_extension_editor_plugin(const StringName &p_class_name);
 
 	static void add_plugin_init_callback(EditorPluginInitializeCallback p_callback);
 	static void add_init_callback(EditorNodeInitCallback p_callback) { _init_callbacks.push_back(p_callback); }
@@ -865,7 +875,6 @@ public:
 
 	void _copy_warning(const String &p_str);
 
-	void set_use_startup_benchmark(bool p_use_startup_benchmark, const String &p_startup_benchmark_file);
 	Error export_preset(const String &p_preset, const String &p_path, bool p_debug, bool p_pack_only);
 
 	Control *get_gui_base() { return gui_base; }
@@ -881,7 +890,7 @@ public:
 
 	bool is_scene_in_use(const String &p_path);
 
-	void save_layout();
+	void save_editor_layout_delayed();
 	void save_default_environment();
 
 	void open_export_template_manager();

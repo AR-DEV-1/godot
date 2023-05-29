@@ -104,6 +104,7 @@ GDScriptParser::GDScriptParser() {
 	register_annotation(MethodInfo("@export_flags_3d_render"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_LAYERS_3D_RENDER, Variant::INT>);
 	register_annotation(MethodInfo("@export_flags_3d_physics"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_LAYERS_3D_PHYSICS, Variant::INT>);
 	register_annotation(MethodInfo("@export_flags_3d_navigation"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_LAYERS_3D_NAVIGATION, Variant::INT>);
+	register_annotation(MethodInfo("@export_flags_avoidance"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_LAYERS_AVOIDANCE, Variant::INT>);
 	// Export grouping annotations.
 	register_annotation(MethodInfo("@export_category", PropertyInfo(Variant::STRING, "name")), AnnotationInfo::STANDALONE, &GDScriptParser::export_group_annotations<PROPERTY_USAGE_CATEGORY>);
 	register_annotation(MethodInfo("@export_group", PropertyInfo(Variant::STRING, "name"), PropertyInfo(Variant::STRING, "prefix")), AnnotationInfo::STANDALONE, &GDScriptParser::export_group_annotations<PROPERTY_USAGE_GROUP>, varray(""));
@@ -4191,7 +4192,7 @@ String GDScriptParser::DataType::to_string() const {
 			return class_type->fqcn;
 		case SCRIPT: {
 			if (is_meta_type) {
-				return script_type->get_class_name().operator String();
+				return script_type != nullptr ? script_type->get_class_name().operator String() : "";
 			}
 			String name = script_type != nullptr ? script_type->get_name() : "";
 			if (!name.is_empty()) {

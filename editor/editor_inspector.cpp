@@ -1341,11 +1341,7 @@ void EditorInspectorSection::_notification(int p_what) {
 					Color light_font_color = get_theme_color(SNAME("disabled_font_color"), SNAME("Editor"));
 
 					// Can we fit the long version of the revertable count text?
-					if (revertable_properties.size() == 1) {
-						num_revertable_str = "(1 change)";
-					} else {
-						num_revertable_str = vformat("(%d changes)", revertable_properties.size());
-					}
+					num_revertable_str = vformat(TTRN("(%d change)", "(%d changes)", revertable_properties.size()), revertable_properties.size());
 					num_revertable_width = light_font->get_string_size(num_revertable_str, HORIZONTAL_ALIGNMENT_LEFT, -1.0f, light_font_size, TextServer::JUSTIFICATION_NONE).x;
 					if (label_width + separation + num_revertable_width > available) {
 						// We'll have to use the short version.
@@ -1533,6 +1529,11 @@ void EditorInspectorSection::fold() {
 
 	object->editor_set_section_unfold(section, false);
 	vbox->hide();
+	queue_redraw();
+}
+
+void EditorInspectorSection::set_bg_color(const Color &p_bg_color) {
+	bg_color = p_bg_color;
 	queue_redraw();
 }
 
@@ -3918,6 +3919,12 @@ void EditorInspector::_notification(int p_what) {
 			}
 		} break;
 
+		case NOTIFICATION_THEME_CHANGED: {
+			if (add_meta_error_panel) {
+				add_meta_error_panel->add_theme_style_override("panel", get_theme_stylebox(SNAME("panel"), SNAME("Tree")));
+			}
+		} break;
+
 		case NOTIFICATION_PREDELETE: {
 			edit(nullptr); //just in case
 		} break;
@@ -4098,13 +4105,16 @@ void EditorInspector::_show_add_meta_dialog() {
 
 		VBoxContainer *vbc = memnew(VBoxContainer);
 		add_meta_dialog->add_child(vbc);
+
 		HBoxContainer *hbc = memnew(HBoxContainer);
 		vbc->add_child(hbc);
 		hbc->add_child(memnew(Label(TTR("Name:"))));
+
 		add_meta_name = memnew(LineEdit);
 		add_meta_name->set_custom_minimum_size(Size2(200 * EDSCALE, 1));
 		hbc->add_child(add_meta_name);
 		hbc->add_child(memnew(Label(TTR("Type:"))));
+
 		add_meta_type = memnew(OptionButton);
 		for (int i = 0; i < Variant::VARIANT_MAX; i++) {
 			if (i == Variant::NIL || i == Variant::RID || i == Variant::CALLABLE || i == Variant::SIGNAL) {
@@ -4115,12 +4125,24 @@ void EditorInspector::_show_add_meta_dialog() {
 			add_meta_type->add_icon_item(get_theme_icon(type, "EditorIcons"), type, i);
 		}
 		hbc->add_child(add_meta_type);
+
+		Control *spacing = memnew(Control);
+		vbc->add_child(spacing);
+		spacing->set_custom_minimum_size(Size2(0, 10 * EDSCALE));
+
 		add_meta_dialog->set_ok_button_text(TTR("Add"));
 		add_child(add_meta_dialog);
 		add_meta_dialog->register_text_enter(add_meta_name);
 		add_meta_dialog->connect("confirmed", callable_mp(this, &EditorInspector::_add_meta_confirm));
+
+		add_meta_error_panel = memnew(PanelContainer);
+		vbc->add_child(add_meta_error_panel);
+		if (is_inside_tree()) {
+			add_meta_error_panel->add_theme_style_override("panel", get_theme_stylebox(SNAME("panel"), SNAME("Tree")));
+		}
+
 		add_meta_error = memnew(Label);
-		vbc->add_child(add_meta_error);
+		add_meta_error_panel->add_child(add_meta_error);
 
 		add_meta_name->connect("text_changed", callable_mp(this, &EditorInspector::_check_meta_name));
 	}

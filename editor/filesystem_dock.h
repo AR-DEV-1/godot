@@ -50,6 +50,15 @@ class ProgressBar;
 class SceneCreateDialog;
 class ShaderCreateDialog;
 class DirectoryCreateDialog;
+class EditorResourceTooltipPlugin;
+
+class FileSystemTree : public Tree {
+	virtual Control *make_custom_tooltip(const String &p_text) const;
+};
+
+class FileSystemList : public ItemList {
+	virtual Control *make_custom_tooltip(const String &p_text) const;
+};
 
 class FileSystemDock : public VBoxContainer {
 	GDCLASS(FileSystemDock, VBoxContainer);
@@ -125,7 +134,7 @@ private:
 	Button *button_file_list_display_mode = nullptr;
 	Button *button_hist_next = nullptr;
 	Button *button_hist_prev = nullptr;
-	LineEdit *current_path = nullptr;
+	LineEdit *current_path_line_edit = nullptr;
 
 	HBoxContainer *toolbar2_hbc = nullptr;
 	LineEdit *tree_search_box = nullptr;
@@ -152,12 +161,16 @@ private:
 	DependencyRemoveDialog *remove_dialog = nullptr;
 
 	EditorDirDialog *move_dialog = nullptr;
-	ConfirmationDialog *rename_dialog = nullptr;
-	LineEdit *rename_dialog_text = nullptr;
 	ConfirmationDialog *duplicate_dialog = nullptr;
 	LineEdit *duplicate_dialog_text = nullptr;
 	DirectoryCreateDialog *make_dir_dialog = nullptr;
+
 	ConfirmationDialog *overwrite_dialog = nullptr;
+	ScrollContainer *overwrite_dialog_scroll = nullptr;
+	Label *overwrite_dialog_header = nullptr;
+	Label *overwrite_dialog_footer = nullptr;
+	Label *overwrite_dialog_file_list = nullptr;
+
 	SceneCreateDialog *make_scene_dialog = nullptr;
 	ScriptCreateDialog *make_script_dialog = nullptr;
 	ShaderCreateDialog *make_shader_dialog = nullptr;
@@ -185,26 +198,27 @@ private:
 	int history_pos;
 	int history_max_size;
 
-	String path;
+	String current_path;
 
 	bool initialized = false;
 
 	bool updating_tree = false;
 	int tree_update_id;
-	Tree *tree = nullptr;
-	ItemList *files = nullptr;
+	FileSystemTree *tree = nullptr;
+	FileSystemList *files = nullptr;
 	bool import_dock_needs_update = false;
 
 	bool holding_branch = false;
 	Vector<TreeItem *> tree_items_selected_on_drag_begin;
 	PackedInt32Array list_items_selected_on_drag_begin;
 
+	LocalVector<Ref<EditorResourceTooltipPlugin>> tooltip_plugins;
+
 	void _tree_mouse_exited();
 	void _reselect_items_selected_on_drag_begin(bool reset = false);
 
 	Ref<Texture2D> _get_tree_item_icon(bool p_is_valid, String p_file_type);
 	bool _create_tree(TreeItem *p_parent, EditorFileSystemDirectory *p_dir, Vector<String> &uncollapsed_paths, bool p_select_in_favorites, bool p_unfold_path = false);
-	Vector<String> _compute_uncollapsed_paths();
 	void _update_tree(const Vector<String> &p_uncollapsed_paths = Vector<String>(), bool p_uncollapse_root = false, bool p_select_in_favorites = false, bool p_unfold_path = false);
 	void _navigate_to_path(const String &p_path, bool p_select_in_favorites = false);
 
@@ -295,7 +309,7 @@ private:
 
 	void _search(EditorFileSystemDirectory *p_path, List<FileInfo> *matches, int p_max_items);
 
-	void _set_current_path_text(const String &p_path);
+	void _set_current_path_line_edit_text(const String &p_path);
 
 	Variant get_drag_data_fw(const Point2 &p_point, Control *p_from);
 	bool can_drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from) const;
@@ -327,6 +341,7 @@ protected:
 
 public:
 	Vector<String> get_selected_paths() const;
+	Vector<String> get_uncollapsed_paths() const;
 
 	String get_current_path() const;
 	String get_current_directory() const;
@@ -350,6 +365,12 @@ public:
 
 	void set_file_list_display_mode(FileListDisplayMode p_mode);
 	FileListDisplayMode get_file_list_display_mode() { return file_list_display_mode; };
+
+	Tree *get_tree_control() { return tree; }
+
+	void add_resource_tooltip_plugin(const Ref<EditorResourceTooltipPlugin> &p_plugin);
+	void remove_resource_tooltip_plugin(const Ref<EditorResourceTooltipPlugin> &p_plugin);
+	Control *create_tooltip_for_path(const String &p_path) const;
 
 	FileSystemDock();
 	~FileSystemDock();

@@ -175,7 +175,7 @@
 				        print("Goodbye!")
 				[/gdscript]
 				[csharp]
-				public override void _Notification(long what)
+				public override void _Notification(int what)
 				{
 				    if (what == NotificationPredelete)
 				    {
@@ -352,6 +352,12 @@
 			<return type="bool" />
 			<description>
 				Returns [code]true[/code] if the object is allowed to translate messages with [method tr] and [method tr_n]. See also [method set_message_translation].
+			</description>
+		</method>
+		<method name="cancel_free">
+			<return type="void" />
+			<description>
+				If this method is called during [constant NOTIFICATION_PREDELETE], this object will reject being freed and will remain allocated. This is mostly an internal function used for error handling to avoid the user from freeing objects when they are not intended to.
 			</description>
 		</method>
 		<method name="connect">
