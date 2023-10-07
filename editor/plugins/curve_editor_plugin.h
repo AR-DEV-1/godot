@@ -101,11 +101,11 @@ private:
 	Vector2 get_view_pos(Vector2 p_world_pos) const;
 	Vector2 get_world_pos(Vector2 p_view_pos) const;
 
-	void _on_mouse_exited();
-
 	void _redraw();
 
 private:
+	const float ASPECT_RATIO = 6.f / 13.f;
+
 	Transform2D _world_to_view;
 
 	Ref<Curve> curve;

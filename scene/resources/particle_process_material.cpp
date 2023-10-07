@@ -31,6 +31,7 @@
 #include "particle_process_material.h"
 
 #include "core/version.h"
+#include "scene/resources/curve_texture.h"
 
 Mutex ParticleProcessMaterial::material_mutex;
 SelfList<ParticleProcessMaterial>::List *ParticleProcessMaterial::dirty_materials = nullptr;
@@ -229,7 +230,7 @@ void ParticleProcessMaterial::_update_shader() {
 		}
 	}
 
-	if (sub_emitter_mode != SUB_EMITTER_DISABLED) {
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && !RenderingServer::get_singleton()->is_low_end()) {
 		if (sub_emitter_mode == SUB_EMITTER_CONSTANT) {
 			code += "uniform float sub_emitter_frequency;\n";
 		}
@@ -497,14 +498,20 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "	CUSTOM.x = base_angle * degree_to_rad;\n"; // angle
 	code += "	CUSTOM.y = 0.0;\n"; // phase
 	code += "	CUSTOM.w = (1.0 - lifetime_randomness * rand_from_seed(alt_seed));\n";
-	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand);\n"; // animation offset (0-1)
+	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand);\n\n"; // animation offset (0-1)
+
+	code += "	if (RESTART_ROT_SCALE) {\n";
+	code += "		TRANSFORM[0].xyz = vec3(1.0, 0.0, 0.0);\n";
+	code += "		TRANSFORM[1].xyz = vec3(0.0, 1.0, 0.0);\n";
+	code += "		TRANSFORM[2].xyz = vec3(0.0, 0.0, 1.0);\n";
+	code += "	}\n\n";
 
 	code += "	if (RESTART_POSITION) {\n";
 
 	switch (emission_shape) {
 		case EMISSION_SHAPE_POINT: {
 			//do none, identity (will later be multiplied by emission transform)
-			code += "		TRANSFORM = mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1));\n";
+			code += "		TRANSFORM[3].xyz = vec3(0.0, 0.0, 0.0);\n";
 		} break;
 		case EMISSION_SHAPE_SPHERE: {
 			code += "		float s = rand_from_seed(alt_seed) * 2.0 - 1.0;\n";
@@ -676,11 +683,13 @@ void ParticleProcessMaterial::_update_shader() {
 		code += "	pos.z = 0.0;\n";
 	}
 	code += "	// apply linear acceleration\n";
-	code += "	force += length(VELOCITY) > 0.0 ? normalize(VELOCITY) * tex_linear_accel * mix(linear_accel_min, linear_accel_max, rand_from_seed(alt_seed)) : vec3(0.0);\n";
+	code += "	float linear_accel_rand = rand_from_seed(alt_seed);\n";
+	code += "	force += length(VELOCITY) > 0.0 ? normalize(VELOCITY) * tex_linear_accel * mix(linear_accel_min, linear_accel_max, linear_accel_rand) : vec3(0.0);\n";
 	code += "	// apply radial acceleration\n";
 	code += "	vec3 org = EMISSION_TRANSFORM[3].xyz;\n";
 	code += "	vec3 diff = pos - org;\n";
-	code += "	force += length(diff) > 0.0 ? normalize(diff) * tex_radial_accel * mix(radial_accel_min, radial_accel_max, rand_from_seed(alt_seed)) : vec3(0.0);\n";
+	code += "	float radial_accel_rand = rand_from_seed(alt_seed);\n";
+	code += "	force += length(diff) > 0.0 ? normalize(diff) * tex_radial_accel * mix(radial_accel_min, radial_accel_max, radial_accel_rand) : vec3(0.0);\n";
 	code += "	// apply tangential acceleration;\n";
 	code += "	float tangent_accel_val = tex_tangent_accel * mix(tangent_accel_min, tangent_accel_max, rand_from_seed(alt_seed));\n";
 	if (particle_flags[PARTICLE_FLAG_DISABLE_Z]) {
@@ -753,7 +762,7 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "	float base_angle = (tex_angle) * mix(initial_angle_min, initial_angle_max, angle_rand);\n";
 	code += "	base_angle += CUSTOM.y * LIFETIME * (tex_angular_velocity) * mix(angular_velocity_min,angular_velocity_max, rand_from_seed(alt_seed));\n";
 	code += "	CUSTOM.x = base_angle * degree_to_rad;\n"; // angle
-	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, rand_from_seed(alt_seed)) + tv * tex_anim_speed * mix(anim_speed_min, anim_speed_max, rand_from_seed(alt_seed));\n"; // angle
+	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand) + tv * tex_anim_speed * mix(anim_speed_min, anim_speed_max, rand_from_seed(alt_seed));\n"; // angle
 
 	// apply color
 	// apply hue rotation
@@ -874,7 +883,7 @@ void ParticleProcessMaterial::_update_shader() {
 		code += "	}\n";
 	}
 
-	if (sub_emitter_mode != SUB_EMITTER_DISABLED) {
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && !RenderingServer::get_singleton()->is_low_end()) {
 		code += "	int emit_count = 0;\n";
 		switch (sub_emitter_mode) {
 			case SUB_EMITTER_CONSTANT: {
@@ -1356,7 +1365,11 @@ float ParticleProcessMaterial::get_turbulence_noise_strength() const {
 
 void ParticleProcessMaterial::set_turbulence_noise_scale(float p_turbulence_noise_scale) {
 	turbulence_noise_scale = p_turbulence_noise_scale;
-	float shader_turbulence_noise_scale = (pow(p_turbulence_noise_scale, 0.25) * 5.6234 / 10.0) * 4.0 - 3.0;
+	const float noise_frequency_when_slider_is_zero = 4.0;
+	const float max_slider_value = 10.0;
+	const float curve_exponent = 0.25;
+	const float curve_rescale = noise_frequency_when_slider_is_zero / pow(max_slider_value, curve_exponent);
+	float shader_turbulence_noise_scale = pow(p_turbulence_noise_scale, curve_exponent) * curve_rescale - noise_frequency_when_slider_is_zero;
 	RenderingServer::get_singleton()->material_set_param(_get_material(), shader_names->turbulence_noise_scale, shader_turbulence_noise_scale);
 }
 
@@ -1477,6 +1490,9 @@ void ParticleProcessMaterial::set_sub_emitter_mode(SubEmitterMode p_sub_emitter_
 	sub_emitter_mode = p_sub_emitter_mode;
 	_queue_shader_change();
 	notify_property_list_changed();
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && RenderingServer::get_singleton()->is_low_end()) {
+		WARN_PRINT_ONCE_ED("Sub-emitter modes other than SUB_EMITTER_DISABLED are not supported in the GL Compatibility rendering backend.");
+	}
 }
 
 ParticleProcessMaterial::SubEmitterMode ParticleProcessMaterial::get_sub_emitter_mode() const {
@@ -1732,8 +1748,8 @@ void ParticleProcessMaterial::_bind_methods() {
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "tangential_accel_max", PROPERTY_HINT_RANGE, "-100,100,0.01,or_less,or_greater"), "set_param_max", "get_param_max", PARAM_TANGENTIAL_ACCEL);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "tangential_accel_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_TANGENTIAL_ACCEL);
 	ADD_GROUP("Damping", "");
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_min", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater"), "set_param_min", "get_param_min", PARAM_DAMPING);
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_max", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater"), "set_param_max", "get_param_max", PARAM_DAMPING);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_min", PROPERTY_HINT_RANGE, "0,100,0.001,or_greater"), "set_param_min", "get_param_min", PARAM_DAMPING);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_max", PROPERTY_HINT_RANGE, "0,100,0.001,or_greater"), "set_param_max", "get_param_max", PARAM_DAMPING);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "damping_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_DAMPING);
 	ADD_GROUP("Angle", "");
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "angle_min", PROPERTY_HINT_RANGE, "-720,720,0.1,or_less,or_greater,degrees"), "set_param_min", "get_param_min", PARAM_ANGLE);

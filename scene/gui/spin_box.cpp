@@ -32,6 +32,7 @@
 
 #include "core/input/input.h"
 #include "core/math/expression.h"
+#include "scene/theme/theme_db.h"
 
 Size2 SpinBox::get_minimum_size() const {
 	Size2 ms = line_edit->get_combined_minimum_size();
@@ -54,18 +55,31 @@ void SpinBox::_update_text() {
 		}
 	}
 
-	line_edit->set_text(value);
+	line_edit->set_text_with_selection(value);
 }
 
 void SpinBox::_text_submitted(const String &p_string) {
 	Ref<Expression> expr;
 	expr.instantiate();
 
-	String num = TS->parse_number(p_string);
+	// Convert commas ',' to dots '.' for French/German etc. keyboard layouts.
+	String text = p_string.replace(",", ".");
+	text = text.replace(";", ",");
+	text = TS->parse_number(text);
 	// Ignore the prefix and suffix in the expression.
-	Error err = expr->parse(num.trim_prefix(prefix + " ").trim_suffix(" " + suffix));
+	text = text.trim_prefix(prefix + " ").trim_suffix(" " + suffix);
+
+	Error err = expr->parse(text);
 	if (err != OK) {
-		return;
+		// If the expression failed try without converting commas to dots - they might have been for parameter separation.
+		text = p_string;
+		text = TS->parse_number(text);
+		text = text.trim_prefix(prefix + " ").trim_suffix(" " + suffix);
+
+		err = expr->parse(text);
+		if (err != OK) {
+			return;
+		}
 	}
 
 	Variant value = expr->execute(Array(), nullptr, false, true);
@@ -202,11 +216,17 @@ void SpinBox::_line_edit_focus_enter() {
 
 void SpinBox::_line_edit_focus_exit() {
 	// Discontinue because the focus_exit was caused by left-clicking the arrows.
-	if (get_viewport()->gui_get_focus_owner() == get_line_edit()) {
+	const Viewport *viewport = get_viewport();
+	if (!viewport || viewport->gui_get_focus_owner() == get_line_edit()) {
 		return;
 	}
 	// Discontinue because the focus_exit was caused by right-click context menu.
 	if (line_edit->is_menu_visible()) {
+		return;
+	}
+	// Discontinue because the focus_exit was caused by canceling.
+	if (Input::get_singleton()->is_action_pressed("ui_cancel")) {
+		_update_text();
 		return;
 	}
 
@@ -220,12 +240,6 @@ inline void SpinBox::_adjust_width_for_icon(const Ref<Texture2D> &icon) {
 		line_edit->set_offset(SIDE_RIGHT, -w);
 		last_w = w;
 	}
-}
-
-void SpinBox::_update_theme_item_cache() {
-	Range::_update_theme_item_cache();
-
-	theme_cache.updown_icon = get_theme_icon(SNAME("updown"));
 }
 
 void SpinBox::_notification(int p_what) {
@@ -249,6 +263,9 @@ void SpinBox::_notification(int p_what) {
 			_update_text();
 		} break;
 
+		case NOTIFICATION_VISIBILITY_CHANGED:
+			drag.allowed = false;
+			[[fallthrough]];
 		case NOTIFICATION_EXIT_TREE: {
 			_release_mouse();
 		} break;
@@ -373,6 +390,8 @@ void SpinBox::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "suffix"), "set_suffix", "get_suffix");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "custom_arrow_step", PROPERTY_HINT_RANGE, "0,10000,0.0001,or_greater"), "set_custom_arrow_step", "get_custom_arrow_step");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "select_all_on_focus"), "set_select_all_on_focus", "is_select_all_on_focus");
+
+	BIND_THEME_ITEM_CUSTOM(Theme::DATA_TYPE_ICON, SpinBox, updown_icon, "updown");
 }
 
 SpinBox::SpinBox() {

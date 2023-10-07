@@ -147,10 +147,6 @@ void CanvasItem::_redraw_callback() {
 	pending_update = false; // don't change to false until finished drawing (avoid recursive update)
 }
 
-void CanvasItem::_invalidate_global_transform() {
-	_set_global_invalid(true);
-}
-
 Transform2D CanvasItem::get_global_transform_with_canvas() const {
 	ERR_READ_THREAD_GUARD_V(Transform2D());
 	if (canvas_layer) {
@@ -277,10 +273,9 @@ void CanvasItem::_exit_canvas() {
 }
 
 void CanvasItem::_notification(int p_what) {
-	ERR_MAIN_THREAD_GUARD;
-
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
+			ERR_MAIN_THREAD_GUARD;
 			ERR_FAIL_COND(!is_inside_tree());
 
 			Node *parent = get_parent();
@@ -307,7 +302,7 @@ void CanvasItem::_notification(int p_what) {
 							parent = parent->get_parent();
 						}
 
-						ERR_FAIL_COND(!viewport);
+						ERR_FAIL_NULL(viewport);
 
 						window = Object::cast_to<Window>(viewport);
 						if (window) {
@@ -320,7 +315,6 @@ void CanvasItem::_notification(int p_what) {
 				}
 			}
 
-			_set_global_invalid(true);
 			_enter_canvas();
 
 			RenderingServer::get_singleton()->canvas_item_set_visible(canvas_item, is_visible_in_tree()); // The visibility of the parent may change.
@@ -341,6 +335,8 @@ void CanvasItem::_notification(int p_what) {
 
 		} break;
 		case NOTIFICATION_EXIT_TREE: {
+			ERR_MAIN_THREAD_GUARD;
+
 			if (xform_change.in_list()) {
 				get_tree()->xform_change_list.remove(&xform_change);
 			}
@@ -362,12 +358,22 @@ void CanvasItem::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_VISIBILITY_CHANGED: {
+			ERR_MAIN_THREAD_GUARD;
+
 			emit_signal(SceneStringNames::get_singleton()->visibility_changed);
 		} break;
 		case NOTIFICATION_WORLD_2D_CHANGED: {
+			ERR_MAIN_THREAD_GUARD;
+
 			_exit_canvas();
 			_enter_canvas();
-		}
+		} break;
+		case NOTIFICATION_PARENTED: {
+			// The node is not inside the tree during this notification.
+			ERR_MAIN_THREAD_GUARD;
+
+			_notify_transform();
+		} break;
 	}
 }
 
@@ -381,7 +387,7 @@ void CanvasItem::update_draw_order() {
 	if (canvas_group != StringName()) {
 		get_tree()->call_group_flags(SceneTree::GROUP_CALL_UNIQUE | SceneTree::GROUP_CALL_DEFERRED, canvas_group, "_top_level_raise_self");
 	} else {
-		ERR_FAIL_COND_MSG(!get_parent_item(), "Moved child is in incorrect state (no canvas group, no canvas item parent).");
+		ERR_FAIL_NULL_MSG(get_parent_item(), "Moved child is in incorrect state (no canvas group, no canvas item parent).");
 		RenderingServer::get_singleton()->canvas_item_set_draw_index(canvas_item, get_index());
 	}
 }
@@ -446,7 +452,7 @@ void CanvasItem::set_as_top_level(bool p_top_level) {
 
 	if (!is_inside_tree()) {
 		top_level = p_top_level;
-		propagate_call(SNAME("_invalidate_global_transform"));
+		_notify_transform();
 		return;
 	}
 
@@ -1033,13 +1039,13 @@ Ref<InputEvent> CanvasItem::make_input_local(const Ref<InputEvent> &p_event) con
 
 Vector2 CanvasItem::get_global_mouse_position() const {
 	ERR_READ_THREAD_GUARD_V(Vector2());
-	ERR_FAIL_COND_V(!get_viewport(), Vector2());
+	ERR_FAIL_NULL_V(get_viewport(), Vector2());
 	return get_canvas_transform().affine_inverse().xform(get_viewport()->get_mouse_position());
 }
 
 Vector2 CanvasItem::get_local_mouse_position() const {
 	ERR_READ_THREAD_GUARD_V(Vector2());
-	ERR_FAIL_COND_V(!get_viewport(), Vector2());
+	ERR_FAIL_NULL_V(get_viewport(), Vector2());
 
 	return get_global_transform().affine_inverse().xform(get_global_mouse_position());
 }
@@ -1064,7 +1070,6 @@ void CanvasItem::_validate_property(PropertyInfo &p_property) const {
 
 void CanvasItem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_top_level_raise_self"), &CanvasItem::_top_level_raise_self);
-	ClassDB::bind_method(D_METHOD("_invalidate_global_transform"), &CanvasItem::_invalidate_global_transform);
 
 #ifdef TOOLS_ENABLED
 	ClassDB::bind_method(D_METHOD("_edit_set_state", "state"), &CanvasItem::_edit_set_state);
@@ -1343,7 +1348,7 @@ bool CanvasItem::get_visibility_layer_bit(uint32_t p_visibility_layer) const {
 	return (visibility_layer & (1 << p_visibility_layer));
 }
 
-void CanvasItem::_refresh_texture_filter_cache() {
+void CanvasItem::_refresh_texture_filter_cache() const {
 	if (!is_inside_tree()) {
 		return;
 	}
@@ -1394,7 +1399,7 @@ CanvasItem::TextureFilter CanvasItem::get_texture_filter() const {
 	return texture_filter;
 }
 
-void CanvasItem::_refresh_texture_repeat_cache() {
+void CanvasItem::_refresh_texture_repeat_cache() const {
 	if (!is_inside_tree()) {
 		return;
 	}
@@ -1465,13 +1470,13 @@ CanvasItem::TextureRepeat CanvasItem::get_texture_repeat() const {
 	return texture_repeat;
 }
 
-CanvasItem::TextureFilter CanvasItem::get_texture_filter_in_tree() {
+CanvasItem::TextureFilter CanvasItem::get_texture_filter_in_tree() const {
 	ERR_READ_THREAD_GUARD_V(TEXTURE_FILTER_NEAREST);
 	_refresh_texture_filter_cache();
 	return (TextureFilter)texture_filter_cache;
 }
 
-CanvasItem::TextureRepeat CanvasItem::get_texture_repeat_in_tree() {
+CanvasItem::TextureRepeat CanvasItem::get_texture_repeat_in_tree() const {
 	ERR_READ_THREAD_GUARD_V(TEXTURE_REPEAT_DISABLED);
 	_refresh_texture_repeat_cache();
 	return (TextureRepeat)texture_repeat_cache;

@@ -256,6 +256,7 @@ public:
 		FLAG_SUBSURFACE_MODE_SKIN,
 		FLAG_PARTICLE_TRAILS_MODE,
 		FLAG_ALBEDO_TEXTURE_MSDF,
+		FLAG_DISABLE_FOG,
 		FLAG_MAX
 	};
 
@@ -327,6 +328,7 @@ private:
 		uint64_t deep_parallax : 1;
 		uint64_t grow : 1;
 		uint64_t proximity_fade : 1;
+		uint64_t orm : 1;
 
 		// flag bitfield
 		uint32_t feature_mask;
@@ -347,6 +349,8 @@ private:
 			return memcmp(this, &p_key, sizeof(MaterialKey)) < 0;
 		}
 	};
+
+	size_t sss = sizeof(MaterialKey);
 
 	struct ShaderData {
 		RID shader;
@@ -378,6 +382,7 @@ private:
 		mk.distance_fade = distance_fade;
 		mk.emission_op = emission_op;
 		mk.alpha_antialiasing_mode = alpha_antialiasing_mode;
+		mk.orm = orm;
 
 		for (int i = 0; i < FEATURE_MAX; i++) {
 			if (features[i]) {

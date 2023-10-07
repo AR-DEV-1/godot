@@ -30,18 +30,20 @@
 
 #include "display_server_web.h"
 
+#include "dom_keys.inc"
+#include "godot_js.h"
+#include "os_web.h"
+
 #include "core/config/project_settings.h"
+#include "scene/resources/atlas_texture.h"
+#include "servers/rendering/dummy/rasterizer_dummy.h"
+
 #ifdef GLES3_ENABLED
 #include "drivers/gles3/rasterizer_gles3.h"
 #endif
-#include "platform/web/os_web.h"
-#include "servers/rendering/dummy/rasterizer_dummy.h"
 
 #include <emscripten.h>
 #include <png.h>
-
-#include "dom_keys.inc"
-#include "godot_js.h"
 
 #define DOM_BUTTON_LEFT 0
 #define DOM_BUTTON_MIDDLE 1
@@ -58,10 +60,7 @@ bool DisplayServerWeb::check_size_force_redraw() {
 	bool size_changed = godot_js_display_size_update() != 0;
 	if (size_changed && !rect_changed_callback.is_null()) {
 		Variant size = Rect2i(Point2i(), window_get_size()); // TODO use window_get_position if implemented.
-		Variant *vp = &size;
-		Variant ret;
-		Callable::CallError ce;
-		rect_changed_callback.callp((const Variant **)&vp, 1, ret, ce);
+		rect_changed_callback.call(size);
 	}
 	return size_changed;
 }
@@ -88,11 +87,7 @@ void DisplayServerWeb::drop_files_js_callback(char **p_filev, int p_filec) {
 	for (int i = 0; i < p_filec; i++) {
 		files.push_back(String::utf8(p_filev[i]));
 	}
-	Variant v = files;
-	Variant *vp = &v;
-	Variant ret;
-	Callable::CallError ce;
-	ds->drop_files_callback.callp((const Variant **)&vp, 1, ret, ce);
+	ds->drop_files_callback.call(files);
 }
 
 // Web quit request callback.
@@ -100,10 +95,7 @@ void DisplayServerWeb::request_quit_callback() {
 	DisplayServerWeb *ds = get_singleton();
 	if (ds && !ds->window_event_callback.is_null()) {
 		Variant event = int(DisplayServer::WINDOW_EVENT_CLOSE_REQUEST);
-		Variant *eventp = &event;
-		Variant ret;
-		Callable::CallError ce;
-		ds->window_event_callback.callp((const Variant **)&eventp, 1, ret, ce);
+		ds->window_event_callback.call(event);
 	}
 }
 
@@ -617,10 +609,7 @@ void DisplayServerWeb::vk_input_text_callback(const char *p_text, int p_cursor) 
 	}
 	// Call input_text
 	Variant event = String::utf8(p_text);
-	Variant *eventp = &event;
-	Variant ret;
-	Callable::CallError ce;
-	ds->input_text_callback.callp((const Variant **)&eventp, 1, ret, ce);
+	ds->input_text_callback.call(event);
 	// Insert key right to reach position.
 	Input *input = Input::get_singleton();
 	Ref<InputEventKey> k;
@@ -722,53 +711,51 @@ void DisplayServerWeb::send_window_event_callback(int p_notification) {
 	}
 	if (!ds->window_event_callback.is_null()) {
 		Variant event = int(p_notification);
-		Variant *eventp = &event;
-		Variant ret;
-		Callable::CallError ce;
-		ds->window_event_callback.callp((const Variant **)&eventp, 1, ret, ce);
+		ds->window_event_callback.call(event);
 	}
 }
 
 void DisplayServerWeb::set_icon(const Ref<Image> &p_icon) {
-	ERR_FAIL_COND(p_icon.is_null());
-	Ref<Image> icon = p_icon;
-	if (icon->is_compressed()) {
-		icon = icon->duplicate();
-		ERR_FAIL_COND(icon->decompress() != OK);
-	}
-	if (icon->get_format() != Image::FORMAT_RGBA8) {
-		if (icon == p_icon) {
+	if (p_icon.is_valid()) {
+		ERR_FAIL_COND(p_icon->get_width() <= 0 || p_icon->get_height() <= 0);
+
+		Ref<Image> icon = p_icon;
+		if (icon->is_compressed()) {
 			icon = icon->duplicate();
+			ERR_FAIL_COND(icon->decompress() != OK);
 		}
-		icon->convert(Image::FORMAT_RGBA8);
+		if (icon->get_format() != Image::FORMAT_RGBA8) {
+			if (icon == p_icon) {
+				icon = icon->duplicate();
+			}
+			icon->convert(Image::FORMAT_RGBA8);
+		}
+
+		png_image png_meta;
+		memset(&png_meta, 0, sizeof png_meta);
+		png_meta.version = PNG_IMAGE_VERSION;
+		png_meta.width = icon->get_width();
+		png_meta.height = icon->get_height();
+		png_meta.format = PNG_FORMAT_RGBA;
+
+		PackedByteArray png;
+		size_t len;
+		PackedByteArray data = icon->get_data();
+		ERR_FAIL_COND(!png_image_write_get_memory_size(png_meta, len, 0, data.ptr(), 0, nullptr));
+
+		png.resize(len);
+		ERR_FAIL_COND(!png_image_write_to_memory(&png_meta, png.ptrw(), &len, 0, data.ptr(), 0, nullptr));
+
+		godot_js_display_window_icon_set(png.ptr(), len);
+	} else {
+		godot_js_display_window_icon_set(nullptr, 0);
 	}
-
-	png_image png_meta;
-	memset(&png_meta, 0, sizeof png_meta);
-	png_meta.version = PNG_IMAGE_VERSION;
-	png_meta.width = icon->get_width();
-	png_meta.height = icon->get_height();
-	png_meta.format = PNG_FORMAT_RGBA;
-
-	PackedByteArray png;
-	size_t len;
-	PackedByteArray data = icon->get_data();
-	ERR_FAIL_COND(!png_image_write_get_memory_size(png_meta, len, 0, data.ptr(), 0, nullptr));
-
-	png.resize(len);
-	ERR_FAIL_COND(!png_image_write_to_memory(&png_meta, png.ptrw(), &len, 0, data.ptr(), 0, nullptr));
-
-	godot_js_display_window_icon_set(png.ptr(), len);
 }
 
 void DisplayServerWeb::_dispatch_input_event(const Ref<InputEvent> &p_event) {
 	Callable cb = get_singleton()->input_event_callback;
-	if (!cb.is_null()) {
-		Variant ev = p_event;
-		Variant *evp = &ev;
-		Variant ret;
-		Callable::CallError ce;
-		cb.callp((const Variant **)&evp, 1, ret, ce);
+	if (cb.is_valid()) {
+		cb.call(p_event);
 	}
 }
 
@@ -810,7 +797,7 @@ DisplayServerWeb::DisplayServerWeb(const String &p_rendering_driver, WindowMode 
 		if (!emscripten_webgl_enable_extension(webgl_ctx, "OVR_multiview2")) {
 			print_verbose("Failed to enable WebXR extension.");
 		}
-		RasterizerGLES3::make_current();
+		RasterizerGLES3::make_current(false);
 
 	} else {
 		OS::get_singleton()->alert(
@@ -1072,12 +1059,20 @@ void DisplayServerWeb::window_move_to_foreground(WindowID p_window) {
 	// Not supported.
 }
 
+bool DisplayServerWeb::window_is_focused(WindowID p_window) const {
+	return true;
+}
+
 bool DisplayServerWeb::window_can_draw(WindowID p_window) const {
 	return true;
 }
 
 bool DisplayServerWeb::can_any_window_draw() const {
 	return true;
+}
+
+DisplayServer::VSyncMode DisplayServerWeb::window_get_vsync_mode(WindowID p_vsync_mode) const {
+	return DisplayServer::VSYNC_ENABLED;
 }
 
 void DisplayServerWeb::process_events() {

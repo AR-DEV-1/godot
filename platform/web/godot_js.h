@@ -31,11 +31,13 @@
 #ifndef GODOT_JS_H
 #define GODOT_JS_H
 
+#define WASM_EXPORT __attribute__((visibility("default")))
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "stddef.h"
+#include <stddef.h>
 
 // Config
 extern void godot_js_config_locale_get(char *p_ptr, int p_ptr_max);

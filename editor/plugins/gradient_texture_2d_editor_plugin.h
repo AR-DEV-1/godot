@@ -36,6 +36,7 @@
 
 class Button;
 class EditorSpinSlider;
+class GradientTexture2D;
 
 class GradientTexture2DEdit : public Control {
 	GDCLASS(GradientTexture2DEdit, Control);
@@ -65,8 +66,6 @@ class GradientTexture2DEdit : public Control {
 	void set_fill_pos(const Vector2 &p_pos);
 
 	virtual void gui_input(const Ref<InputEvent> &p_event) override;
-
-	void _on_mouse_exited();
 
 	void _draw();
 

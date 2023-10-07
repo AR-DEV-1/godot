@@ -47,7 +47,7 @@ static void *godot_open(voidpf opaque, const char *p_fname, int mode) {
 		return nullptr;
 	}
 
-	Ref<FileAccess> f = FileAccess::open(p_fname, FileAccess::READ);
+	Ref<FileAccess> f = FileAccess::open(String::utf8(p_fname), FileAccess::READ);
 	ERR_FAIL_COND_V(f.is_null(), nullptr);
 
 	ZipData *zd = memnew(ZipData);
@@ -239,7 +239,7 @@ Error FileAccessZip::open_internal(const String &p_path, int p_mode_flags) {
 
 	ERR_FAIL_COND_V(p_mode_flags & FileAccess::WRITE, FAILED);
 	ZipArchive *arch = ZipArchive::get_singleton();
-	ERR_FAIL_COND_V(!arch, FAILED);
+	ERR_FAIL_NULL_V(arch, FAILED);
 	zfile = arch->get_file_handle(p_path);
 	ERR_FAIL_COND_V(!zfile, FAILED);
 
@@ -255,7 +255,7 @@ void FileAccessZip::_close() {
 	}
 
 	ZipArchive *arch = ZipArchive::get_singleton();
-	ERR_FAIL_COND(!arch);
+	ERR_FAIL_NULL(arch);
 	arch->close_handle(zfile);
 	zfile = nullptr;
 }

@@ -53,6 +53,14 @@ private:
 
 	/* PARTICLES */
 
+	enum {
+		BASE_UNIFORM_SET,
+		MATERIAL_UNIFORM_SET,
+		COLLISION_TEXTURTES_UNIFORM_SET,
+	};
+
+	const int SAMPLERS_BINDING_FIRST_INDEX = 3;
+
 	struct ParticleData {
 		float xform[16];
 		float velocity[3];
@@ -217,6 +225,11 @@ private:
 		double frame_remainder = 0;
 		real_t collision_base_size = 0.01;
 
+		uint32_t instance_motion_vectors_current_offset = 0;
+		uint32_t instance_motion_vectors_previous_offset = 0;
+		uint64_t instance_motion_vectors_last_change = -1;
+		bool instance_motion_vectors_enabled = false;
+
 		bool clear = true;
 
 		bool force_sub_emit = false;
@@ -280,10 +293,13 @@ private:
 			float align_up[3];
 			uint32_t align_mode;
 
-			uint32_t order_by_lifetime;
 			uint32_t lifetime_split;
 			uint32_t lifetime_reverse;
-			uint32_t copy_mode_2d;
+			uint32_t motion_vectors_current_offset;
+			struct {
+				uint32_t order_by_lifetime : 1;
+				uint32_t copy_mode_2d : 1;
+			};
 
 			float inv_emission_transform[16];
 		};
@@ -455,19 +471,19 @@ public:
 
 	_FORCE_INLINE_ RS::ParticlesMode particles_get_mode(RID p_particles) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, RS::PARTICLES_MODE_2D);
+		ERR_FAIL_NULL_V(particles, RS::PARTICLES_MODE_2D);
 		return particles->mode;
 	}
 
 	_FORCE_INLINE_ uint32_t particles_get_frame_counter(RID p_particles) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, false);
+		ERR_FAIL_NULL_V(particles, false);
 		return particles->frame_counter;
 	}
 
 	_FORCE_INLINE_ uint32_t particles_get_amount(RID p_particles, uint32_t &r_trail_divisor) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, 0);
+		ERR_FAIL_NULL_V(particles, 0);
 
 		if (particles->trails_enabled && particles->trail_bind_poses.size() > 1) {
 			r_trail_divisor = particles->trail_bind_poses.size();
@@ -480,21 +496,21 @@ public:
 
 	_FORCE_INLINE_ bool particles_has_collision(RID p_particles) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, 0);
+		ERR_FAIL_NULL_V(particles, 0);
 
 		return particles->has_collision_cache;
 	}
 
 	_FORCE_INLINE_ uint32_t particles_is_using_local_coords(RID p_particles) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, false);
+		ERR_FAIL_NULL_V(particles, false);
 
 		return particles->use_local_coords;
 	}
 
 	_FORCE_INLINE_ RID particles_get_instance_buffer_uniform_set(RID p_particles, RID p_shader, uint32_t p_set) {
 		Particles *particles = particles_owner.get_or_null(p_particles);
-		ERR_FAIL_COND_V(!particles, RID());
+		ERR_FAIL_NULL_V(particles, RID());
 		if (particles->particles_transforms_buffer_uniform_set.is_null() || !RD::get_singleton()->uniform_set_is_valid(particles->particles_transforms_buffer_uniform_set)) {
 			_particles_update_buffers(particles);
 			Vector<RD::Uniform> uniforms;
@@ -513,12 +529,15 @@ public:
 		return particles->particles_transforms_buffer_uniform_set;
 	}
 
+	void particles_get_instance_buffer_motion_vectors_offsets(RID p_particles, uint32_t &r_current_offset, uint32_t &r_prev_offset);
+
 	virtual void particles_add_collision(RID p_particles, RID p_particles_collision_instance) override;
 	virtual void particles_remove_collision(RID p_particles, RID p_particles_collision_instance) override;
 	void particles_set_canvas_sdf_collision(RID p_particles, bool p_enable, const Transform2D &p_xform, const Rect2 &p_to_screen, RID p_texture);
 
 	virtual void update_particles() override;
 
+	void particles_update_dependency(RID p_particles, DependencyTracker *p_instance);
 	Dependency *particles_get_dependency(RID p_particles) const;
 
 	/* Particles Collision */

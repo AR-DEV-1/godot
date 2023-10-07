@@ -40,9 +40,6 @@ namespace GodotTools.Build
             plugin.MakeBottomPanelItemVisible(plugin.MSBuildPanel);
         }
 
-        public static void RestartBuild(BuildOutputView buildOutputView) => throw new NotImplementedException();
-        public static void StopBuild(BuildOutputView buildOutputView) => throw new NotImplementedException();
-
         private static string GetLogFilePath(BuildInfo buildInfo)
         {
             return Path.Combine(buildInfo.LogsDirPath, MsBuildLogFileName);
@@ -206,53 +203,59 @@ namespace GodotTools.Build
 
         private static bool BuildProjectBlocking(BuildInfo buildInfo)
         {
-            if (!File.Exists(buildInfo.Solution))
-                return true; // No solution to build
+            if (!File.Exists(buildInfo.Project))
+                return true; // No project to build.
 
-            using var pr = new EditorProgress("dotnet_build_project", "Building .NET project...", 1);
-
-            pr.Step("Building project solution", 0);
-
-            if (!Build(buildInfo))
+            bool success;
+            using (var pr = new EditorProgress("dotnet_build_project", "Building .NET project...", 1))
             {
-                ShowBuildErrorDialog("Failed to build project solution");
-                return false;
+                pr.Step("Building project", 0);
+                success = Build(buildInfo);
             }
 
-            return true;
+            if (!success)
+            {
+                ShowBuildErrorDialog("Failed to build project");
+            }
+
+            return success;
         }
 
         private static bool CleanProjectBlocking(BuildInfo buildInfo)
         {
-            if (!File.Exists(buildInfo.Solution))
-                return true; // No solution to clean
+            if (!File.Exists(buildInfo.Project))
+                return true; // No project to clean.
 
-            using var pr = new EditorProgress("dotnet_clean_project", "Cleaning .NET project...", 1);
-
-            pr.Step("Cleaning project solution", 0);
-
-            if (!Build(buildInfo))
+            bool success;
+            using (var pr = new EditorProgress("dotnet_clean_project", "Cleaning .NET project...", 1))
             {
-                ShowBuildErrorDialog("Failed to clean project solution");
-                return false;
+                pr.Step("Cleaning project", 0);
+                success = Build(buildInfo);
             }
 
-            return true;
+            if (!success)
+            {
+                ShowBuildErrorDialog("Failed to clean project");
+            }
+
+            return success;
         }
 
         private static bool PublishProjectBlocking(BuildInfo buildInfo)
         {
-            using var pr = new EditorProgress("dotnet_publish_project", "Publishing .NET project...", 1);
-
-            pr.Step("Running dotnet publish", 0);
-
-            if (!Publish(buildInfo))
+            bool success;
+            using (var pr = new EditorProgress("dotnet_publish_project", "Publishing .NET project...", 1))
             {
-                ShowBuildErrorDialog("Failed to publish .NET project");
-                return false;
+                pr.Step("Running dotnet publish", 0);
+                success = Publish(buildInfo);
             }
 
-            return true;
+            if (!success)
+            {
+                ShowBuildErrorDialog("Failed to publish .NET project");
+            }
+
+            return success;
         }
 
         private static BuildInfo CreateBuildInfo(
@@ -279,11 +282,18 @@ namespace GodotTools.Build
             [DisallowNull] string configuration,
             [DisallowNull] string platform,
             [DisallowNull] string runtimeIdentifier,
-            [DisallowNull] string publishOutputDir
+            [DisallowNull] string publishOutputDir,
+            bool includeDebugSymbols = true
         )
         {
             var buildInfo = new BuildInfo(GodotSharpDirs.ProjectSlnPath, GodotSharpDirs.ProjectCsProjPath, configuration,
                 runtimeIdentifier, publishOutputDir, restore: true, rebuild: false, onlyClean: false);
+
+            if (!includeDebugSymbols)
+            {
+                buildInfo.CustomProperties.Add("DebugType=None");
+                buildInfo.CustomProperties.Add("DebugSymbols=false");
+            }
 
             buildInfo.CustomProperties.Add($"GodotTargetPlatform={platform}");
 
@@ -308,17 +318,18 @@ namespace GodotTools.Build
             [DisallowNull] string configuration,
             [DisallowNull] string platform,
             [DisallowNull] string runtimeIdentifier,
-            string publishOutputDir
+            string publishOutputDir,
+            bool includeDebugSymbols = true
         ) => PublishProjectBlocking(CreatePublishBuildInfo(configuration,
-            platform, runtimeIdentifier, publishOutputDir));
+            platform, runtimeIdentifier, publishOutputDir, includeDebugSymbols));
 
         public static bool EditorBuildCallback()
         {
-            if (!File.Exists(GodotSharpDirs.ProjectSlnPath))
-                return true; // No solution to build
+            if (!File.Exists(GodotSharpDirs.ProjectCsProjPath))
+                return true; // No project to build.
 
             if (GodotSharpEditor.Instance.SkipBuildBeforePlaying)
-                return true; // Requested play from an external editor/IDE which already built the project
+                return true; // Requested play from an external editor/IDE which already built the project.
 
             return BuildProjectBlocking("Debug");
         }

@@ -484,7 +484,7 @@ void enet_socket_destroy(ENetSocket socket) {
 }
 
 int enet_socket_send(ENetSocket socket, const ENetAddress *address, const ENetBuffer *buffers, size_t bufferCount) {
-	ERR_FAIL_COND_V(address == nullptr, -1);
+	ERR_FAIL_NULL_V(address, -1);
 
 	ENetGodotSocket *sock = (ENetGodotSocket *)socket;
 	IPAddress dest;
@@ -534,6 +534,10 @@ int enet_socket_receive(ENetSocket socket, ENetAddress *address, ENetBuffer *buf
 	Error err = sock->recvfrom((uint8_t *)buffers[0].data, buffers[0].dataLength, read, ip, address->port);
 	if (err == ERR_BUSY) {
 		return 0;
+	}
+	if (err == ERR_OUT_OF_MEMORY) {
+		// A packet above the ENET_PROTOCOL_MAXIMUM_MTU was received.
+		return -2;
 	}
 
 	if (err != OK) {
