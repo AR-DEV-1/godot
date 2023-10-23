@@ -651,8 +651,8 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 				Node *top_node = selection[i];
 				Node *bottom_node = selection[selection.size() - 1 - i];
 
-				ERR_FAIL_COND(!top_node->get_parent());
-				ERR_FAIL_COND(!bottom_node->get_parent());
+				ERR_FAIL_NULL(top_node->get_parent());
+				ERR_FAIL_NULL(bottom_node->get_parent());
 
 				int bottom_node_pos = bottom_node->get_index(false);
 				int top_node_pos_next = top_node->get_index(false) + (MOVING_DOWN ? 1 : -1);
@@ -1058,6 +1058,10 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 		} break;
 		case TOOL_SCENE_MAKE_LOCAL: {
 			if (!profile_allow_editing) {
+				break;
+			}
+
+			if (!_validate_no_foreign()) {
 				break;
 			}
 
@@ -1635,10 +1639,15 @@ bool SceneTreeDock::_update_node_path(Node *p_root_node, NodePath &r_node_path, 
 	return false;
 }
 
-bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_variant, HashMap<Node *, NodePath> *p_renames) const {
+bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_variant, HashMap<Node *, NodePath> *p_renames, bool p_inside_resource) const {
 	switch (r_variant.get_type()) {
 		case Variant::NODE_PATH: {
 			NodePath node_path = r_variant;
+			if (p_inside_resource && !p_root_node->has_node(node_path)) {
+				// Resources may have NodePaths to nodes that aren't on the scene, so skip them.
+				return false;
+			}
+
 			if (!node_path.is_empty() && _update_node_path(p_root_node, node_path, p_renames)) {
 				r_variant = node_path;
 				return true;
@@ -1650,7 +1659,7 @@ bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_var
 			bool updated = false;
 			for (int i = 0; i < a.size(); i++) {
 				Variant value = a[i];
-				if (_check_node_path_recursive(p_root_node, value, p_renames)) {
+				if (_check_node_path_recursive(p_root_node, value, p_renames, p_inside_resource)) {
 					if (!updated) {
 						a = a.duplicate(); // Need to duplicate for undo-redo to work.
 						updated = true;
@@ -1669,7 +1678,7 @@ bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_var
 			bool updated = false;
 			for (int i = 0; i < d.size(); i++) {
 				Variant value = d.get_value_at_index(i);
-				if (_check_node_path_recursive(p_root_node, value, p_renames)) {
+				if (_check_node_path_recursive(p_root_node, value, p_renames, p_inside_resource)) {
 					if (!updated) {
 						d = d.duplicate(); // Need to duplicate for undo-redo to work.
 						updated = true;
@@ -1699,7 +1708,7 @@ bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_var
 				String propertyname = E.name;
 				Variant old_variant = resource->get(propertyname);
 				Variant updated_variant = old_variant;
-				if (_check_node_path_recursive(p_root_node, updated_variant, p_renames)) {
+				if (_check_node_path_recursive(p_root_node, updated_variant, p_renames, true)) {
 					EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 					undo_redo->add_do_property(resource, propertyname, updated_variant);
 					undo_redo->add_undo_property(resource, propertyname, old_variant);
@@ -1934,6 +1943,8 @@ void SceneTreeDock::_do_reparent(Node *p_new_parent, int p_position_in_parent, V
 
 	p_nodes.sort_custom<Node::Comparator>(); //Makes result reliable.
 
+	const int first_idx = p_position_in_parent == -1 ? p_new_parent->get_child_count(false) : p_position_in_parent;
+	int nodes_before = first_idx;
 	bool no_change = true;
 	for (int ni = 0; ni < p_nodes.size(); ni++) {
 		if (p_nodes[ni] == p_new_parent) {
@@ -1942,7 +1953,17 @@ void SceneTreeDock::_do_reparent(Node *p_new_parent, int p_position_in_parent, V
 		// `move_child` + `get_index` doesn't really work for internal nodes.
 		ERR_FAIL_COND_MSG(p_nodes[ni]->get_internal_mode() != INTERNAL_MODE_DISABLED, "Trying to move internal node, this is not supported.");
 
-		if (p_nodes[ni]->get_parent() != p_new_parent || p_position_in_parent + ni != p_nodes[ni]->get_index(false)) {
+		if (p_nodes[ni]->get_index(false) < first_idx) {
+			nodes_before--;
+		}
+
+		if (p_nodes[ni]->get_parent() != p_new_parent) {
+			no_change = false;
+		}
+	}
+
+	for (int ni = 0; ni < p_nodes.size() && no_change; ni++) {
+		if (p_nodes[ni]->get_index(false) != nodes_before + ni) {
 			no_change = false;
 		}
 	}

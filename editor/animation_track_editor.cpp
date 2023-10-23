@@ -330,6 +330,7 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 				undo_redo->commit_action();
 
 				setting = false;
+				notify_change(); // To update limits for `start_offset`/`end_offset` sliders (they depend on the stream length).
 				return true;
 			}
 
@@ -586,8 +587,10 @@ void AnimationTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) const
 		} break;
 		case Animation::TYPE_AUDIO: {
 			p_list->push_back(PropertyInfo(Variant::OBJECT, PNAME("stream"), PROPERTY_HINT_RESOURCE_TYPE, "AudioStream"));
-			p_list->push_back(PropertyInfo(Variant::FLOAT, PNAME("start_offset"), PROPERTY_HINT_RANGE, "0,3600,0.0001,or_greater"));
-			p_list->push_back(PropertyInfo(Variant::FLOAT, PNAME("end_offset"), PROPERTY_HINT_RANGE, "0,3600,0.0001,or_greater"));
+			Ref<AudioStream> audio_stream = animation->audio_track_get_key_stream(track, key);
+			String hint_string = vformat("0,%.4f,0.0001,or_greater", audio_stream.is_valid() ? audio_stream->get_length() : 3600.0);
+			p_list->push_back(PropertyInfo(Variant::FLOAT, PNAME("start_offset"), PROPERTY_HINT_RANGE, hint_string));
+			p_list->push_back(PropertyInfo(Variant::FLOAT, PNAME("end_offset"), PROPERTY_HINT_RANGE, hint_string));
 
 		} break;
 		case Animation::TYPE_ANIMATION: {
@@ -2695,18 +2698,25 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 					AnimationPlayer *ap = ape->get_player();
 					if (ap) {
 						NodePath npath = animation->track_get_path(track);
-						Node *nd = ap->get_node(ap->get_root_node())->get_node(NodePath(npath.get_concatenated_names()));
-						StringName prop = npath.get_concatenated_subnames();
-						PropertyInfo prop_info;
-						ClassDB::get_property_info(nd->get_class(), prop, &prop_info);
+						Node *a_ap_root_node = ap->get_node(ap->get_root_node());
+						Node *nd = nullptr;
+						// We must test that we have a valid a_ap_root_node before trying to access its content to init the nd Node.
+						if (a_ap_root_node) {
+							nd = a_ap_root_node->get_node(NodePath(npath.get_concatenated_names()));
+						}
+						if (nd) {
+							StringName prop = npath.get_concatenated_subnames();
+							PropertyInfo prop_info;
+							ClassDB::get_property_info(nd->get_class(), prop, &prop_info);
 #ifdef DISABLE_DEPRECATED
-						bool is_angle = prop_info.type == Variant::FLOAT && prop_info.hint_string.find("radians_as_degrees") != -1;
+							bool is_angle = prop_info.type == Variant::FLOAT && prop_info.hint_string.find("radians_as_degrees") != -1;
 #else
-						bool is_angle = prop_info.type == Variant::FLOAT && prop_info.hint_string.find("radians") != -1;
+							bool is_angle = prop_info.type == Variant::FLOAT && prop_info.hint_string.find("radians") != -1;
 #endif // DISABLE_DEPRECATED
-						if (is_angle) {
-							menu->add_icon_item(get_editor_theme_icon(SNAME("InterpLinearAngle")), TTR("Linear Angle"), MENU_INTERPOLATION_LINEAR_ANGLE);
-							menu->add_icon_item(get_editor_theme_icon(SNAME("InterpCubicAngle")), TTR("Cubic Angle"), MENU_INTERPOLATION_CUBIC_ANGLE);
+							if (is_angle) {
+								menu->add_icon_item(get_editor_theme_icon(SNAME("InterpLinearAngle")), TTR("Linear Angle"), MENU_INTERPOLATION_LINEAR_ANGLE);
+								menu->add_icon_item(get_editor_theme_icon(SNAME("InterpCubicAngle")), TTR("Cubic Angle"), MENU_INTERPOLATION_CUBIC_ANGLE);
+							}
 						}
 					}
 				}
@@ -3903,7 +3913,7 @@ void AnimationTrackEditor::insert_value_key(const String &p_property, const Vari
 	ERR_FAIL_NULL(root);
 	ERR_FAIL_COND(history->get_path_size() == 0);
 	Object *obj = ObjectDB::get_instance(history->get_path_object(0));
-	ERR_FAIL_COND(!Object::cast_to<Node>(obj));
+	ERR_FAIL_NULL(Object::cast_to<Node>(obj));
 
 	// Let's build a node path.
 	Node *node = Object::cast_to<Node>(obj);

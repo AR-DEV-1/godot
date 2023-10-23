@@ -868,6 +868,29 @@ bool AnimationMixer::_update_caches() {
 				track_value->is_continuous |= anim->value_track_get_update_mode(i) != Animation::UPDATE_DISCRETE;
 				track_value->is_using_angle |= anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_LINEAR_ANGLE || anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_CUBIC_ANGLE;
 
+				// TODO: Currently, misc type cannot be blended. In the future,
+				// it should have a separate blend weight, just as bool is converted to 0 and 1.
+				// Then, it should provide the correct precedence value.
+				if (track_value->is_continuous) {
+					switch (track_value->init_value.get_type()) {
+						case Variant::NIL:
+						case Variant::STRING_NAME:
+						case Variant::NODE_PATH:
+						case Variant::RID:
+						case Variant::OBJECT:
+						case Variant::CALLABLE:
+						case Variant::SIGNAL:
+						case Variant::DICTIONARY:
+						case Variant::ARRAY: {
+							WARN_PRINT_ONCE_ED("AnimationMixer: '" + String(E) + "', Value Track: '" + String(path) + "' uses a non-numeric type as key value with UpdateMode.UPDATE_CONTINUOUS. This will not be blended correctly, so it is forced to UpdateMode.UPDATE_DISCRETE.");
+							track_value->is_continuous = false;
+							break;
+						}
+						default: {
+						}
+					}
+				}
+
 				if (was_continuous != track_value->is_continuous) {
 					WARN_PRINT_ONCE_ED("Value Track: " + String(path) + " has different update modes between some animations may be blended. Blending prioritizes UpdateMode.UPDATE_CONTINUOUS, so the process treat UpdateMode.UPDATE_DISCRETE as UpdateMode.UPDATE_CONTINUOUS with InterpolationType.INTERPOLATION_NEAREST.");
 				}
@@ -1834,7 +1857,6 @@ Vector3 AnimationMixer::get_root_motion_scale_accumulator() const {
 	return root_motion_scale_accumulator;
 }
 
-#ifdef TOOLS_ENABLED
 void AnimationMixer::set_reset_on_save_enabled(bool p_enabled) {
 	reset_on_save = p_enabled;
 }
@@ -1843,6 +1865,7 @@ bool AnimationMixer::is_reset_on_save_enabled() const {
 	return reset_on_save;
 }
 
+#ifdef TOOLS_ENABLED
 bool AnimationMixer::can_apply_reset() const {
 	return has_animation(SceneStringNames::get_singleton()->RESET);
 }
@@ -2072,14 +2095,10 @@ void AnimationMixer::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "active"), "set_active", "is_active");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "deterministic"), "set_deterministic", "is_deterministic");
 
-#ifdef TOOLS_ENABLED
-	ClassDB::bind_method(D_METHOD("_reset"), &AnimationMixer::reset);
-	ClassDB::bind_method(D_METHOD("_restore", "backup"), &AnimationMixer::restore);
 	ClassDB::bind_method(D_METHOD("set_reset_on_save_enabled", "enabled"), &AnimationMixer::set_reset_on_save_enabled);
 	ClassDB::bind_method(D_METHOD("is_reset_on_save_enabled"), &AnimationMixer::is_reset_on_save_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "reset_on_save", PROPERTY_HINT_NONE, ""), "set_reset_on_save_enabled", "is_reset_on_save_enabled");
 	ADD_SIGNAL(MethodInfo("mixer_updated")); // For updating dummy player.
-#endif // TOOLS_ENABLED
 
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "root_node"), "set_root_node", "get_root_node");
 

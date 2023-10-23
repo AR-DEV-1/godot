@@ -159,6 +159,7 @@ void EditorHelp::_update_theme_item_cache() {
 
 	theme_cache.background_style = get_theme_stylebox(SNAME("background"), SNAME("EditorHelp"));
 
+	class_desc->begin_bulk_theme_override();
 	class_desc->add_theme_font_override("normal_font", theme_cache.doc_font);
 	class_desc->add_theme_font_size_override("normal_font_size", theme_cache.doc_font_size);
 
@@ -168,6 +169,7 @@ void EditorHelp::_update_theme_item_cache() {
 	class_desc->add_theme_constant_override("table_v_separation", get_theme_constant(SNAME("table_v_separation"), SNAME("EditorHelp")));
 	class_desc->add_theme_constant_override("text_highlight_h_padding", get_theme_constant(SNAME("text_highlight_h_padding"), SNAME("EditorHelp")));
 	class_desc->add_theme_constant_override("text_highlight_v_padding", get_theme_constant(SNAME("text_highlight_v_padding"), SNAME("EditorHelp")));
+	class_desc->end_bulk_theme_override();
 }
 
 void EditorHelp::_search(bool p_search_previous) {
@@ -2264,7 +2266,12 @@ static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, Control
 			p_rt->push_strikethrough();
 			pos = brk_end + 1;
 			tag_stack.push_front(tag);
-
+		} else if (tag == "lb") {
+			p_rt->add_text("[");
+			pos = brk_end + 1;
+		} else if (tag == "rb") {
+			p_rt->add_text("]");
+			pos = brk_end + 1;
 		} else if (tag == "url") {
 			int end = bbcode.find("[", brk_end);
 			if (end == -1) {
@@ -2850,7 +2857,7 @@ void EditorHelpTooltip::_notification(int p_what) {
 // `p_text` is expected to be something like these:
 // - `class|Control||`;
 // - `property|Control|size|`;
-// - `signal|Control|gui_input|(event: InputEvent)`
+// - `signal|Control|gui_input|(event: InputEvent)`.
 void EditorHelpTooltip::parse_tooltip(const String &p_text) {
 	tooltip_text = p_text;
 
@@ -2875,7 +2882,11 @@ void EditorHelpTooltip::parse_tooltip(const String &p_text) {
 
 		if (type == "property") {
 			description = get_property_description(class_name, property_name);
-			formatted_text = TTR("Property:");
+			if (property_name.begins_with("metadata/")) {
+				formatted_text = TTR("Metadata:");
+			} else {
+				formatted_text = TTR("Property:");
+			}
 		} else if (type == "method") {
 			description = get_method_description(class_name, property_name);
 			formatted_text = TTR("Method:");
@@ -2890,7 +2901,8 @@ void EditorHelpTooltip::parse_tooltip(const String &p_text) {
 		}
 	}
 
-	formatted_text += " [u][b]" + title + "[/b][/u]" + property_args + "\n";
+	// Metadata special handling replaces "Property:" with "Metadata": above.
+	formatted_text += " [u][b]" + title.trim_prefix("metadata/") + "[/b][/u]" + property_args.replace("[", "[lb]") + "\n";
 	formatted_text += description.is_empty() ? "[i]" + TTR("No description available.") + "[/i]" : description;
 	set_text(formatted_text);
 }

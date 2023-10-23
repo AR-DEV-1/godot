@@ -118,7 +118,7 @@ DisplayServerMacOS::WindowID DisplayServerMacOS::_create_window(WindowMode p_mod
 		WindowData wd;
 
 		wd.window_delegate = [[GodotWindowDelegate alloc] init];
-		ERR_FAIL_COND_V_MSG(wd.window_delegate == nil, INVALID_WINDOW_ID, "Can't create a window delegate");
+		ERR_FAIL_NULL_V_MSG(wd.window_delegate, INVALID_WINDOW_ID, "Can't create a window delegate");
 		[wd.window_delegate setWindowID:window_id_counter];
 
 		int rq_screen = get_screen_from_rect(p_rect);
@@ -144,11 +144,11 @@ DisplayServerMacOS::WindowID DisplayServerMacOS::_create_window(WindowMode p_mod
 						  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
 							backing:NSBackingStoreBuffered
 							  defer:NO];
-		ERR_FAIL_COND_V_MSG(wd.window_object == nil, INVALID_WINDOW_ID, "Can't create a window");
+		ERR_FAIL_NULL_V_MSG(wd.window_object, INVALID_WINDOW_ID, "Can't create a window");
 		[wd.window_object setWindowID:window_id_counter];
 
 		wd.window_view = [[GodotContentView alloc] init];
-		ERR_FAIL_COND_V_MSG(wd.window_view == nil, INVALID_WINDOW_ID, "Can't create a window view");
+		ERR_FAIL_NULL_V_MSG(wd.window_view, INVALID_WINDOW_ID, "Can't create a window view");
 		[wd.window_view setWindowID:window_id_counter];
 		[wd.window_view setWantsLayer:TRUE];
 
@@ -567,7 +567,7 @@ NSImage *DisplayServerMacOS::_convert_to_nsimg(Ref<Image> &p_image) const {
 					  colorSpaceName:NSDeviceRGBColorSpace
 						 bytesPerRow:int(p_image->get_width()) * 4
 						bitsPerPixel:32];
-	ERR_FAIL_COND_V(imgrep == nil, nil);
+	ERR_FAIL_NULL_V(imgrep, nil);
 	uint8_t *pixels = [imgrep bitmapData];
 
 	int len = p_image->get_width() * p_image->get_height();
@@ -583,7 +583,7 @@ NSImage *DisplayServerMacOS::_convert_to_nsimg(Ref<Image> &p_image) const {
 	}
 
 	NSImage *nsimg = [[NSImage alloc] initWithSize:NSMakeSize(p_image->get_width(), p_image->get_height())];
-	ERR_FAIL_COND_V(nsimg == nil, nil);
+	ERR_FAIL_NULL_V(nsimg, nil);
 	[nsimg addRepresentation:imgrep];
 	return nsimg;
 }
@@ -611,7 +611,13 @@ void DisplayServerMacOS::menu_open(NSMenu *p_menu) {
 		MenuData &md = submenu[submenu_inv[p_menu]];
 		md.is_open = true;
 		if (md.open.is_valid()) {
-			md.open.call();
+			Variant ret;
+			Callable::CallError ce;
+
+			md.open.callp(nullptr, 0, ret, ce);
+			if (ce.error != Callable::CallError::CALL_OK) {
+				ERR_PRINT(vformat(RTR("Failed to execute menu open callback: %s."), Variant::get_callable_error_text(md.open, nullptr, 0, ce)));
+			}
 		}
 	}
 }
@@ -621,7 +627,13 @@ void DisplayServerMacOS::menu_close(NSMenu *p_menu) {
 		MenuData &md = submenu[submenu_inv[p_menu]];
 		md.is_open = false;
 		if (md.close.is_valid()) {
-			md.close.call();
+			Variant ret;
+			Callable::CallError ce;
+
+			md.close.callp(nullptr, 0, ret, ce);
+			if (ce.error != Callable::CallError::CALL_OK) {
+				ERR_PRINT(vformat(RTR("Failed to execute menu close callback: %s."), Variant::get_callable_error_text(md.close, nullptr, 0, ce)));
+			}
 		}
 	}
 }
@@ -649,7 +661,7 @@ void DisplayServerMacOS::menu_callback(id p_sender) {
 			}
 		}
 
-		if (value->callback != Callable()) {
+		if (value->callback.is_valid()) {
 			MenuCall mc;
 			mc.tag = value->meta;
 			mc.callback = value->callback;
@@ -1574,7 +1586,7 @@ void DisplayServerMacOS::global_menu_set_item_hover_callbacks(const String &p_me
 		NSMenuItem *menu_item = [menu itemAtIndex:p_idx];
 		if (menu_item) {
 			GodotMenuItem *obj = [menu_item representedObject];
-			ERR_FAIL_COND(!obj);
+			ERR_FAIL_NULL(obj);
 			obj->hover_callback = p_callback;
 		}
 	}
@@ -1978,20 +1990,27 @@ Error DisplayServerMacOS::dialog_show(String p_title, String p_description, Vect
 	[window setInformativeText:ns_description];
 	[window setAlertStyle:NSAlertStyleInformational];
 
-	int button_pressed;
+	Variant button_pressed;
 	NSInteger ret = [window runModal];
 	if (ret == NSAlertFirstButtonReturn) {
-		button_pressed = 0;
+		button_pressed = int64_t(0);
 	} else if (ret == NSAlertSecondButtonReturn) {
-		button_pressed = 1;
+		button_pressed = int64_t(1);
 	} else if (ret == NSAlertThirdButtonReturn) {
-		button_pressed = 2;
+		button_pressed = int64_t(2);
 	} else {
-		button_pressed = 2 + (ret - NSAlertThirdButtonReturn);
+		button_pressed = int64_t(2 + (ret - NSAlertThirdButtonReturn));
 	}
 
 	if (!p_callback.is_null()) {
-		p_callback.call(button_pressed);
+		Variant ret;
+		Callable::CallError ce;
+		const Variant *args[1] = { &button_pressed };
+
+		p_callback.callp(args, 1, ret, ce);
+		if (ce.error != Callable::CallError::CALL_OK) {
+			ERR_PRINT(vformat(RTR("Failed to execute dialog callback: %s."), Variant::get_callable_error_text(p_callback, args, 1, ce)));
+		}
 	}
 
 	return OK;
@@ -2166,11 +2185,31 @@ Error DisplayServerMacOS::file_dialog_show(const String &p_title, const String &
 							  url.parse_utf8([[[panel URL] path] UTF8String]);
 							  files.push_back(url);
 							  if (!callback.is_null()) {
-								  callback.call(true, files, [handler getIndex]);
+								  Variant v_result = true;
+								  Variant v_files = files;
+								  Variant v_index = [handler getIndex];
+								  Variant ret;
+								  Callable::CallError ce;
+								  const Variant *args[3] = { &v_result, &v_files, &v_index };
+
+								  callback.callp(args, 3, ret, ce);
+								  if (ce.error != Callable::CallError::CALL_OK) {
+									  ERR_PRINT(vformat(RTR("Failed to execute file dialog callback: %s."), Variant::get_callable_error_text(callback, args, 3, ce)));
+								  }
 							  }
 						  } else {
 							  if (!callback.is_null()) {
-								  callback.call(false, Vector<String>(), [handler getIndex]);
+								  Variant v_result = false;
+								  Variant v_files = Vector<String>();
+								  Variant v_index = [handler getIndex];
+								  Variant ret;
+								  Callable::CallError ce;
+								  const Variant *args[3] = { &v_result, &v_files, &v_index };
+
+								  callback.callp(args, 3, ret, ce);
+								  if (ce.error != Callable::CallError::CALL_OK) {
+									  ERR_PRINT(vformat(RTR("Failed to execute file dialogs callback: %s."), Variant::get_callable_error_text(callback, args, 3, ce)));
+								  }
 							  }
 						  }
 						  if (prev_focus != INVALID_WINDOW_ID) {
@@ -2231,11 +2270,31 @@ Error DisplayServerMacOS::file_dialog_show(const String &p_title, const String &
 								  files.push_back(url);
 							  }
 							  if (!callback.is_null()) {
-								  callback.call(true, files, [handler getIndex]);
+								  Variant v_result = true;
+								  Variant v_files = files;
+								  Variant v_index = [handler getIndex];
+								  Variant ret;
+								  Callable::CallError ce;
+								  const Variant *args[3] = { &v_result, &v_files, &v_index };
+
+								  callback.callp(args, 3, ret, ce);
+								  if (ce.error != Callable::CallError::CALL_OK) {
+									  ERR_PRINT(vformat(RTR("Failed to execute file dialog callback: %s."), Variant::get_callable_error_text(callback, args, 3, ce)));
+								  }
 							  }
 						  } else {
 							  if (!callback.is_null()) {
-								  callback.call(false, Vector<String>(), [handler getIndex]);
+								  Variant v_result = false;
+								  Variant v_files = Vector<String>();
+								  Variant v_index = [handler getIndex];
+								  Variant ret;
+								  Callable::CallError ce;
+								  const Variant *args[3] = { &v_result, &v_files, &v_index };
+
+								  callback.callp(args, 3, ret, ce);
+								  if (ce.error != Callable::CallError::CALL_OK) {
+									  ERR_PRINT(vformat(RTR("Failed to execute file dialogs callback: %s."), Variant::get_callable_error_text(callback, args, 3, ce)));
+								  }
 							  }
 						  }
 						  if (prev_focus != INVALID_WINDOW_ID) {
@@ -2269,7 +2328,15 @@ Error DisplayServerMacOS::dialog_input_text(String p_title, String p_description
 	ret.parse_utf8([[input stringValue] UTF8String]);
 
 	if (!p_callback.is_null()) {
-		p_callback.call(ret);
+		Variant v_result = ret;
+		Variant ret;
+		Callable::CallError ce;
+		const Variant *args[1] = { &v_result };
+
+		p_callback.callp(args, 1, ret, ce);
+		if (ce.error != Callable::CallError::CALL_OK) {
+			ERR_PRINT(vformat(RTR("Failed to execute input dialog callback: %s."), Variant::get_callable_error_text(p_callback, args, 1, ce)));
+		}
 	}
 
 	return OK;
@@ -3562,14 +3629,14 @@ bool DisplayServerMacOS::window_is_focused(WindowID p_window) const {
 }
 
 bool DisplayServerMacOS::window_can_draw(WindowID p_window) const {
-	return (window_get_mode(p_window) != WINDOW_MODE_MINIMIZED) && [windows[p_window].window_object isOnActiveSpace];
+	return windows[p_window].is_visible;
 }
 
 bool DisplayServerMacOS::can_any_window_draw() const {
 	_THREAD_SAFE_METHOD_
 
 	for (const KeyValue<WindowID, WindowData> &E : windows) {
-		if ((window_get_mode(E.key) != WINDOW_MODE_MINIMIZED) && [E.value.window_object isOnActiveSpace]) {
+		if (E.value.is_visible) {
 			return true;
 		}
 	}
@@ -3858,7 +3925,7 @@ void DisplayServerMacOS::cursor_set_custom_image(const Ref<Resource> &p_cursor, 
 							 bytesPerRow:int(texture_size.width) * 4
 							bitsPerPixel:32];
 
-		ERR_FAIL_COND(imgrep == nil);
+		ERR_FAIL_NULL(imgrep);
 		uint8_t *pixels = [imgrep bitmapData];
 
 		int len = int(texture_size.width * texture_size.height);
@@ -4020,7 +4087,15 @@ void DisplayServerMacOS::process_events() {
 	while (List<MenuCall>::Element *call_p = deferred_menu_calls.front()) {
 		MenuCall call = call_p->get();
 		deferred_menu_calls.pop_front(); // Remove before call to avoid infinite loop in case callback is using `process_events` (e.g. EditorProgress).
-		call.callback.call(call.tag);
+
+		Variant ret;
+		Callable::CallError ce;
+		const Variant *args[1] = { &call.tag };
+
+		call.callback.callp(args, 1, ret, ce);
+		if (ce.error != Callable::CallError::CALL_OK) {
+			ERR_PRINT(vformat(RTR("Failed to execute menu callback: %s."), Variant::get_callable_error_text(call.callback, args, 1, ce)));
+		}
 	}
 
 	if (!drop_events) {
@@ -4124,7 +4199,7 @@ void DisplayServerMacOS::set_icon(const Ref<Image> &p_icon) {
 						  colorSpaceName:NSDeviceRGBColorSpace
 							 bytesPerRow:img->get_width() * 4
 							bitsPerPixel:32];
-		ERR_FAIL_COND(imgrep == nil);
+		ERR_FAIL_NULL(imgrep);
 		uint8_t *pixels = [imgrep bitmapData];
 
 		int len = img->get_width() * img->get_height();
@@ -4140,7 +4215,7 @@ void DisplayServerMacOS::set_icon(const Ref<Image> &p_icon) {
 		}
 
 		NSImage *nsimg = [[NSImage alloc] initWithSize:NSMakeSize(img->get_width(), img->get_height())];
-		ERR_FAIL_COND(nsimg == nil);
+		ERR_FAIL_NULL(nsimg);
 
 		[nsimg addRepresentation:imgrep];
 		[NSApp setApplicationIconImage:nsimg];
