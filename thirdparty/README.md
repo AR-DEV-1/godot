@@ -74,7 +74,7 @@ fix build with our own copy of zstd (patch in `patches`).
 ## brotli
 
 - Upstream: https://github.com/google/brotli
-- Version: git (ed1995b6bda19244070ab5d331111f16f67c8054, 2023)
+- Version: 1.1.0 (ed738e842d2fbdf2d6459e39267a633c4a9b2f5d, 2023)
 - License: MIT
 
 Files extracted from upstream source:
@@ -672,7 +672,7 @@ with the provided patch.
 ## openxr
 
 - Upstream: https://github.com/KhronosGroup/OpenXR-SDK
-- Version: 1.0.30 (55224479ab13db8ebc8ab1e3d49197bce6201b0b, 2023)
+- Version: 1.0.28 (f5beb0131f1bea8701ace744d1b50df9049bf331, 2023)
 - License: Apache 2.0
 
 Files extracted from upstream source:
