@@ -261,7 +261,8 @@ void EditorFileSystem::_scan_filesystem() {
 					cpath = name;
 
 				} else {
-					Vector<String> split = l.split("::");
+					// The last section (deps) may contain the same splitter, so limit the maxsplit to 8 to get the complete deps.
+					Vector<String> split = l.split("::", true, 8);
 					ERR_CONTINUE(split.size() < 9);
 					String name = split[0];
 					String file;
@@ -2012,6 +2013,11 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 		}
 	}
 
+	if (FileAccess::exists(p_file + ".import")) {
+		// We only want to handle compat for existing files, not new ones.
+		importer->handle_compatibility_options(params);
+	}
+
 	//mix with default params, in case a parameter is missing
 
 	List<ResourceImporter::ImportOption> opts;
@@ -2147,6 +2153,9 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 			md5s->store_line("dest_md5=\"" + FileAccess::get_multiple_md5(dest_paths) + "\"\n");
 		}
 	}
+
+	// Update cpos, newly created files could've changed the index of the reimported p_file.
+	_find_file(p_file, &fs, cpos);
 
 	//update modified times, to avoid reimport
 	fs->files[cpos]->modified_time = FileAccess::get_modified_time(p_file);
@@ -2363,7 +2372,9 @@ bool EditorFileSystem::_should_skip_directory(const String &p_path) {
 
 	if (FileAccess::exists(p_path.path_join("project.godot"))) {
 		// Skip if another project inside this.
-		WARN_PRINT_ONCE(vformat("Detected another project.godot at %s. The folder will be ignored.", p_path));
+		if (EditorFileSystem::get_singleton()->first_scan) {
+			WARN_PRINT_ONCE(vformat("Detected another project.godot at %s. The folder will be ignored.", p_path));
+		}
 		return true;
 	}
 

@@ -524,6 +524,7 @@ bool TileMapEditorTilesPlugin::forward_canvas_gui_input(const Ref<InputEvent> &p
 	}
 
 	if (CanvasItemEditor::get_singleton()->get_current_tool() != CanvasItemEditor::TOOL_SELECT) {
+		_stop_dragging();
 		return false;
 	}
 
@@ -2373,7 +2374,9 @@ TileMapEditorTilesPlugin::TileMapEditorTilesPlugin() {
 
 	// --- Bottom panel tiles ---
 	tiles_bottom_panel = memnew(VBoxContainer);
-	tiles_bottom_panel->connect("tree_entered", callable_mp(this, &TileMapEditorTilesPlugin::_update_theme));
+	// FIXME: This can trigger theme updates when the nodes that we want to update are not yet available.
+	// The toolbar should be extracted to a dedicated control and theme updates should be handled through
+	// the notification.
 	tiles_bottom_panel->connect("theme_changed", callable_mp(this, &TileMapEditorTilesPlugin::_update_theme));
 	tiles_bottom_panel->connect("visibility_changed", callable_mp(this, &TileMapEditorTilesPlugin::_stop_dragging));
 	tiles_bottom_panel->connect("visibility_changed", callable_mp(this, &TileMapEditorTilesPlugin::_tab_changed));
@@ -3436,7 +3439,7 @@ void TileMapEditorTerrainsPlugin::_update_tiles_list() {
 		terrains_tile_list->set_item_metadata(item_index, list_metadata_dict);
 
 		item_index = terrains_tile_list->add_icon_item(main_vbox_container->get_editor_theme_icon(SNAME("TerrainPath")));
-		terrains_tile_list->set_item_tooltip(item_index, TTR("Path mode: paints a terrain, thens connects it to the previous tile painted within the same stroke."));
+		terrains_tile_list->set_item_tooltip(item_index, TTR("Path mode: paints a terrain, then connects it to the previous tile painted within the same stroke."));
 		list_metadata_dict = Dictionary();
 		list_metadata_dict["type"] = SELECTED_TYPE_PATH;
 		terrains_tile_list->set_item_metadata(item_index, list_metadata_dict);
@@ -3536,7 +3539,9 @@ void TileMapEditorTerrainsPlugin::edit(ObjectID p_tile_map_id, int p_tile_map_la
 
 TileMapEditorTerrainsPlugin::TileMapEditorTerrainsPlugin() {
 	main_vbox_container = memnew(VBoxContainer);
-	main_vbox_container->connect("tree_entered", callable_mp(this, &TileMapEditorTerrainsPlugin::_update_theme));
+	// FIXME: This can trigger theme updates when the nodes that we want to update are not yet available.
+	// The toolbar should be extracted to a dedicated control and theme updates should be handled through
+	// the notification.
 	main_vbox_container->connect("theme_changed", callable_mp(this, &TileMapEditorTerrainsPlugin::_update_theme));
 	main_vbox_container->set_name(TTR("Terrains"));
 

@@ -68,6 +68,7 @@ public:
 	PropertyInfo hint;
 	NodePath base;
 	bool use_fps = false;
+	AnimationTrackEditor *editor = nullptr;
 
 	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
@@ -105,6 +106,7 @@ public:
 	Node *root_path = nullptr;
 
 	bool use_fps = false;
+	AnimationTrackEditor *editor = nullptr;
 
 	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
@@ -409,7 +411,7 @@ class AnimationTrackEditor : public VBoxContainer {
 	void _check_bezier_exist();
 
 	void _name_limit_changed();
-	void _timeline_changed(float p_new_pos, bool p_drag, bool p_timeline_only);
+	void _timeline_changed(float p_new_pos, bool p_timeline_only);
 	void _track_remove_request(int p_track);
 	void _animation_track_remove_request(int p_track, Ref<Animation> p_from_animation);
 	void _track_grab_focus(int p_track);

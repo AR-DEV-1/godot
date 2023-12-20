@@ -90,6 +90,10 @@ String Resource::get_path() const {
 	return path_cache;
 }
 
+void Resource::set_path_cache(const String &p_path) {
+	path_cache = p_path;
+}
+
 String Resource::generate_scene_unique_id() {
 	// Generate a unique enough hash, but still user-readable.
 	// If it's not unique it does not matter because the saver will try again.
@@ -485,12 +489,14 @@ RWLock ResourceCache::path_cache_lock;
 #endif
 
 void ResourceCache::clear() {
-	if (resources.size()) {
-		ERR_PRINT("Resources still in use at exit (run with --verbose for details).");
+	if (!resources.is_empty()) {
 		if (OS::get_singleton()->is_stdout_verbose()) {
+			ERR_PRINT(vformat("%d resources still in use at exit.", resources.size()));
 			for (const KeyValue<String, Resource *> &E : resources) {
 				print_line(vformat("Resource still in use: %s (%s)", E.key, E.value->get_class()));
 			}
+		} else {
+			ERR_PRINT(vformat("%d resources still in use at exit (run with --verbose for details).", resources.size()));
 		}
 	}
 

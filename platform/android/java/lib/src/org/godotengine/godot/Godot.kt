@@ -184,7 +184,7 @@ class Godot(private val context: Context) : SensorEventListener {
 			return
 		}
 
-		beginBenchmarkMeasure("Godot::onCreate")
+		beginBenchmarkMeasure("Startup", "Godot::onCreate")
 		try {
 			this.primaryHost = primaryHost
 			val activity = requireActivity()
@@ -286,7 +286,7 @@ class Godot(private val context: Context) : SensorEventListener {
 			initializationStarted = false
 			throw e
 		} finally {
-			endBenchmarkMeasure("Godot::onCreate");
+			endBenchmarkMeasure("Startup", "Godot::onCreate");
 		}
 	}
 
@@ -536,8 +536,11 @@ class Godot(private val context: Context) : SensorEventListener {
 		for (plugin in pluginRegistry.allPlugins) {
 			plugin.onMainDestroy()
 		}
-		GodotLib.ondestroy()
-		forceQuit()
+
+		runOnRenderThread {
+			GodotLib.ondestroy()
+			forceQuit()
+		}
 	}
 
 	/**
@@ -906,7 +909,7 @@ class Godot(private val context: Context) : SensorEventListener {
 				val arg = ByteArray(strlen)
 				r = inputStream.read(arg)
 				if (r == strlen) {
-					cmdline[i] = String(arg, StandardCharsets.UTF_8)
+					cmdline.add(String(arg, StandardCharsets.UTF_8))
 				}
 			}
 			cmdline
@@ -1013,13 +1016,13 @@ class Godot(private val context: Context) : SensorEventListener {
 	}
 
 	@Keep
-	private fun nativeBeginBenchmarkMeasure(label: String) {
-		beginBenchmarkMeasure(label)
+	private fun nativeBeginBenchmarkMeasure(scope: String, label: String) {
+		beginBenchmarkMeasure(scope, label)
 	}
 
 	@Keep
-	private fun nativeEndBenchmarkMeasure(label: String) {
-		endBenchmarkMeasure(label)
+	private fun nativeEndBenchmarkMeasure(scope: String, label: String) {
+		endBenchmarkMeasure(scope, label)
 	}
 
 	@Keep

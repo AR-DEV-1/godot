@@ -104,7 +104,7 @@ struct CellData {
 	// Rendering.
 	Ref<RenderingQuadrant> rendering_quadrant;
 	SelfList<CellData> rendering_quadrant_list_element;
-	List<RID> occluders;
+	LocalVector<RID> occluders;
 
 	// Physics.
 	LocalVector<RID> bodies;
@@ -461,6 +461,7 @@ private:
 
 	// Layers.
 	LocalVector<Ref<TileMapLayer>> layers;
+	Ref<TileMapLayer> default_layer; // Dummy layer to fetch default values.
 	int selected_layer = -1;
 	bool pending_update = false;
 
@@ -471,14 +472,12 @@ private:
 
 	void _update_notify_local_transform();
 
-	// Polygons.
-	HashMap<Pair<Ref<Resource>, int>, Ref<Resource>, PairHash<Ref<Resource>, int>> polygon_cache;
-	PackedVector2Array _get_transformed_vertices(const PackedVector2Array &p_vertices, int p_alternative_id);
-
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
 	bool _get(const StringName &p_name, Variant &r_ret) const;
 	void _get_property_list(List<PropertyInfo> *p_list) const;
+	bool _property_can_revert(const StringName &p_name) const;
+	bool _property_get_revert(const StringName &p_name, Variant &r_property) const;
 
 	void _notification(int p_what);
 	static void _bind_methods();
@@ -616,7 +615,6 @@ public:
 	// Helpers?
 	TypedArray<Vector2i> get_surrounding_cells(const Vector2i &coords);
 	void draw_cells_outline(Control *p_control, const RBSet<Vector2i> &p_cells, Color p_color, Transform2D p_transform = Transform2D());
-	Ref<Resource> get_transformed_polygon(Ref<Resource> p_polygon, int p_alternative_id);
 
 	// Virtual function to modify the TileData at runtime.
 	GDVIRTUAL2R(bool, _use_tile_data_runtime_update, int, Vector2i);

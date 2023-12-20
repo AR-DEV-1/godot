@@ -68,7 +68,10 @@ void EditorColorMap::create() {
 	add_conversion_color_pair("#414042", "#414042"); // Godot Gray
 
 	add_conversion_color_pair("#ffffff", "#414141"); // Pure white
+	add_conversion_color_pair("#fefefe", "#fefefe"); // Forced light color
 	add_conversion_color_pair("#000000", "#bfbfbf"); // Pure black
+	add_conversion_color_pair("#010101", "#010101"); // Forced dark color
+
 	// Keep pure RGB colors as is, but list them for explicitness.
 	add_conversion_color_pair("#ff0000", "#ff0000"); // Pure red
 	add_conversion_color_pair("#00ff00", "#00ff00"); // Pure green
@@ -76,7 +79,6 @@ void EditorColorMap::create() {
 
 	// GUI Colors
 	add_conversion_color_pair("#e0e0e0", "#5a5a5a"); // Common icon color
-	add_conversion_color_pair("#fefefe", "#fefefe"); // Forced light color
 	add_conversion_color_pair("#808080", "#808080"); // GUI disabled color
 	add_conversion_color_pair("#b3b3b3", "#363636"); // GUI disabled light color
 	add_conversion_color_pair("#699ce8", "#699ce8"); // GUI highlight color
@@ -84,7 +86,6 @@ void EditorColorMap::create() {
 
 	add_conversion_color_pair("#c38ef1", "#a85de9"); // Animation
 	add_conversion_color_pair("#8da5f3", "#3d64dd"); // 2D
-	add_conversion_color_pair("#4b70ea", "#1a3eac"); // 2D Dark
 	add_conversion_color_pair("#7582a8", "#6d83c8"); // 2D Abstract
 	add_conversion_color_pair("#fc7f7f", "#cd3838"); // 3D
 	add_conversion_color_pair("#b56d6d", "#be6a6a"); // 3D Abstract
@@ -402,7 +403,9 @@ float get_gizmo_handle_scale(const String &gizmo_handle_name = "") {
 }
 
 void editor_register_and_generate_icons(Ref<Theme> p_theme, bool p_dark_theme, float p_icon_saturation, int p_thumb_size, bool p_only_thumbs = false) {
-	OS::get_singleton()->benchmark_begin_measure("editor_register_and_generate_icons_" + String((p_only_thumbs ? "with_only_thumbs" : "all")));
+	const String benchmark_key = vformat("Generate Icons (%s)", (p_only_thumbs ? "Only Thumbs" : "All"));
+	OS::get_singleton()->benchmark_begin_measure("EditorTheme", benchmark_key);
+
 	// Before we register the icons, we adjust their colors and saturation.
 	// Most icons follow the standard rules for color conversion to follow the editor
 	// theme's polarity (dark/light). We also adjust the saturation for most icons,
@@ -530,11 +533,11 @@ void editor_register_and_generate_icons(Ref<Theme> p_theme, bool p_dark_theme, f
 			p_theme->set_icon(editor_icons_names[index], EditorStringName(EditorIcons), icon);
 		}
 	}
-	OS::get_singleton()->benchmark_end_measure("editor_register_and_generate_icons_" + String((p_only_thumbs ? "with_only_thumbs" : "all")));
+	OS::get_singleton()->benchmark_end_measure("EditorTheme", benchmark_key);
 }
 
 Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
-	OS::get_singleton()->benchmark_begin_measure("create_editor_theme");
+	OS::get_singleton()->benchmark_begin_measure("EditorTheme", "Create Editor Theme");
 	Ref<EditorTheme> theme = memnew(EditorTheme);
 
 	// Controls may rely on the scale for their internal drawing logic.
@@ -1420,8 +1423,11 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 
 	// Tree
 	theme->set_icon("checked", "Tree", theme->get_icon(SNAME("GuiChecked"), EditorStringName(EditorIcons)));
+	theme->set_icon("checked_disabled", "Tree", theme->get_icon(SNAME("GuiCheckedDisabled"), EditorStringName(EditorIcons)));
 	theme->set_icon("indeterminate", "Tree", theme->get_icon(SNAME("GuiIndeterminate"), EditorStringName(EditorIcons)));
+	theme->set_icon("indeterminate_disabled", "Tree", theme->get_icon(SNAME("GuiIndeterminateDisabled"), EditorStringName(EditorIcons)));
 	theme->set_icon("unchecked", "Tree", theme->get_icon(SNAME("GuiUnchecked"), EditorStringName(EditorIcons)));
+	theme->set_icon("unchecked_disabled", "Tree", theme->get_icon(SNAME("GuiUncheckedDisabled"), EditorStringName(EditorIcons)));
 	theme->set_icon("arrow", "Tree", theme->get_icon(SNAME("GuiTreeArrowDown"), EditorStringName(EditorIcons)));
 	theme->set_icon("arrow_collapsed", "Tree", theme->get_icon(SNAME("GuiTreeArrowRight"), EditorStringName(EditorIcons)));
 	theme->set_icon("arrow_collapsed_mirrored", "Tree", theme->get_icon(SNAME("GuiTreeArrowLeft"), EditorStringName(EditorIcons)));
@@ -1434,6 +1440,7 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_color("custom_button_font_highlight", "Tree", font_hover_color);
 	theme->set_color("font_color", "Tree", font_color);
 	theme->set_color("font_selected_color", "Tree", mono_color);
+	theme->set_color("font_disabled_color", "Tree", font_disabled_color);
 	theme->set_color("font_outline_color", "Tree", font_outline_color);
 	theme->set_color("title_button_color", "Tree", font_color);
 	theme->set_color("drop_position_color", "Tree", accent_color);
@@ -1808,7 +1815,7 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	if (increase_scrollbar_touch_area) {
 		theme->set_stylebox("scroll", "HScrollBar", make_line_stylebox(separator_color, 50));
 	} else {
-		theme->set_stylebox("scroll", "HScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, 1, 1, 1, 1));
+		theme->set_stylebox("scroll", "HScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, -5, 1, -5, 1));
 	}
 	theme->set_stylebox("scroll_focus", "HScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, 1, 1, 1, 1));
 	theme->set_stylebox("grabber", "HScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollGrabber"), EditorStringName(EditorIcons)), 6, 6, 6, 6, 1, 1, 1, 1));
@@ -1826,7 +1833,7 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	if (increase_scrollbar_touch_area) {
 		theme->set_stylebox("scroll", "VScrollBar", make_line_stylebox(separator_color, 50, 1, 1, true));
 	} else {
-		theme->set_stylebox("scroll", "VScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, 1, 1, 1, 1));
+		theme->set_stylebox("scroll", "VScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, 1, -5, 1, -5));
 	}
 	theme->set_stylebox("scroll_focus", "VScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollBg"), EditorStringName(EditorIcons)), 5, 5, 5, 5, 1, 1, 1, 1));
 	theme->set_stylebox("grabber", "VScrollBar", make_stylebox(theme->get_icon(SNAME("GuiScrollGrabber"), EditorStringName(EditorIcons)), 6, 6, 6, 6, 1, 1, 1, 1));
@@ -2359,14 +2366,15 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_color("search_result_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/search_result_color"));
 	theme->set_color("search_result_border_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/search_result_border_color"));
 
-	OS::get_singleton()->benchmark_end_measure("create_editor_theme");
+	OS::get_singleton()->benchmark_end_measure("EditorTheme", "Create Editor Theme");
 
 	return theme;
 }
 
 Ref<Theme> create_custom_theme(const Ref<Theme> p_theme) {
-	OS::get_singleton()->benchmark_begin_measure("create_custom_theme");
 	Ref<Theme> theme = create_editor_theme(p_theme);
+
+	OS::get_singleton()->benchmark_begin_measure("EditorTheme", "Create Custom Theme");
 
 	const String custom_theme_path = EDITOR_GET("interface/theme/custom_theme");
 	if (!custom_theme_path.is_empty()) {
@@ -2376,7 +2384,7 @@ Ref<Theme> create_custom_theme(const Ref<Theme> p_theme) {
 		}
 	}
 
-	OS::get_singleton()->benchmark_end_measure("create_custom_theme");
+	OS::get_singleton()->benchmark_end_measure("EditorTheme", "Create Custom Theme");
 	return theme;
 }
 

@@ -355,7 +355,7 @@ Error DisplayServerWindows::file_dialog_show(const String &p_title, const String
 
 				p_callback.callp(args, 3, ret, ce);
 				if (ce.error != Callable::CallError::CALL_OK) {
-					ERR_PRINT(vformat(RTR("Failed to execute file dialogs callback: %s."), Variant::get_callable_error_text(p_callback, args, 3, ce)));
+					ERR_PRINT(vformat("Failed to execute file dialogs callback: %s.", Variant::get_callable_error_text(p_callback, args, 3, ce)));
 				}
 			}
 		} else {
@@ -369,7 +369,7 @@ Error DisplayServerWindows::file_dialog_show(const String &p_title, const String
 
 				p_callback.callp(args, 3, ret, ce);
 				if (ce.error != Callable::CallError::CALL_OK) {
-					ERR_PRINT(vformat(RTR("Failed to execute file dialogs callback: %s."), Variant::get_callable_error_text(p_callback, args, 3, ce)));
+					ERR_PRINT(vformat("Failed to execute file dialogs callback: %s.", Variant::get_callable_error_text(p_callback, args, 3, ce)));
 				}
 			}
 		}
@@ -1107,6 +1107,11 @@ void DisplayServerWindows::delete_sub_window(WindowID p_window) {
 		context_vulkan->window_destroy(p_window);
 	}
 #endif
+#ifdef D3D12_ENABLED
+	if (context_d3d12) {
+		context_d3d12->window_destroy(p_window);
+	}
+#endif
 #ifdef GLES3_ENABLED
 	if (gl_manager_angle) {
 		gl_manager_angle->window_destroy(p_window);
@@ -1539,6 +1544,11 @@ void DisplayServerWindows::window_set_size(const Size2i p_size, WindowID p_windo
 		context_vulkan->window_resize(p_window, w, h);
 	}
 #endif
+#if defined(D3D12_ENABLED)
+	if (context_d3d12) {
+		context_d3d12->window_resize(p_window, w, h);
+	}
+#endif
 #if defined(GLES3_ENABLED)
 	if (gl_manager_native) {
 		gl_manager_native->window_resize(p_window, w, h);
@@ -1692,7 +1702,9 @@ void DisplayServerWindows::window_set_mode(WindowMode p_mode, WindowID p_window)
 			SystemParametersInfoA(SPI_SETMOUSETRAILS, restore_mouse_trails, 0, 0);
 			restore_mouse_trails = 0;
 		}
-	} else if (p_mode == WINDOW_MODE_WINDOWED) {
+	}
+
+	if (p_mode == WINDOW_MODE_WINDOWED) {
 		ShowWindow(wd.hWnd, SW_RESTORE);
 		wd.maximized = false;
 		wd.minimized = false;
@@ -2588,6 +2600,12 @@ void DisplayServerWindows::window_set_vsync_mode(DisplayServer::VSyncMode p_vsyn
 	}
 #endif
 
+#if defined(D3D12_ENABLED)
+	if (context_d3d12) {
+		context_d3d12->set_vsync_mode(p_window, p_vsync_mode);
+	}
+#endif
+
 #if defined(GLES3_ENABLED)
 	if (gl_manager_native) {
 		gl_manager_native->set_use_vsync(p_window, p_vsync_mode != DisplayServer::VSYNC_DISABLED);
@@ -2606,6 +2624,12 @@ DisplayServer::VSyncMode DisplayServerWindows::window_get_vsync_mode(WindowID p_
 	}
 #endif
 
+#if defined(D3D12_ENABLED)
+	if (context_d3d12) {
+		return context_d3d12->get_vsync_mode(p_window);
+	}
+#endif
+
 #if defined(GLES3_ENABLED)
 	if (gl_manager_native) {
 		return gl_manager_native->is_using_vsync(p_window) ? DisplayServer::VSYNC_ENABLED : DisplayServer::VSYNC_DISABLED;
@@ -2614,7 +2638,6 @@ DisplayServer::VSyncMode DisplayServerWindows::window_get_vsync_mode(WindowID p_
 		return gl_manager_angle->is_using_vsync() ? DisplayServer::VSYNC_ENABLED : DisplayServer::VSYNC_DISABLED;
 	}
 #endif
-
 	return DisplayServer::VSYNC_ENABLED;
 }
 
@@ -2956,9 +2979,7 @@ LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 			}
 		} break;
 		case WM_MOUSEACTIVATE: {
-			if (windows[window_id].no_focus) {
-				return MA_NOACTIVATEANDEAT; // Do not activate, and discard mouse messages.
-			} else if (windows[window_id].is_popup) {
+			if (windows[window_id].no_focus || windows[window_id].is_popup) {
 				return MA_NOACTIVATE; // Do not activate, but process mouse messages.
 			}
 		} break;
@@ -3767,12 +3788,19 @@ LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 
 					rect_changed = true;
 				}
+				// Note: Trigger resize event to update swapchains when window is minimized/restored, even if size is not changed.
+				if (window_created && window.context_created) {
 #if defined(VULKAN_ENABLED)
-				if (context_vulkan && window.context_created) {
-					// Note: Trigger resize event to update swapchains when window is minimized/restored, even if size is not changed.
-					context_vulkan->window_resize(window_id, window.width, window.height);
-				}
+					if (context_vulkan) {
+						context_vulkan->window_resize(window_id, window.width, window.height);
+					}
 #endif
+#if defined(D3D12_ENABLED)
+					if (context_d3d12) {
+						context_d3d12->window_resize(window_id, window.width, window.height);
+					}
+#endif
+				}
 			}
 
 			if (!window.minimized && (!(window_pos_params->flags & SWP_NOMOVE) || window_pos_params->flags & SWP_FRAMECHANGED)) {
@@ -4336,6 +4364,18 @@ DisplayServer::WindowID DisplayServerWindows::_create_window(WindowMode p_mode, 
 		}
 #endif
 
+#ifdef D3D12_ENABLED
+		if (context_d3d12) {
+			if (context_d3d12->window_create(id, p_vsync_mode, wd.hWnd, hInstance, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top) != OK) {
+				memdelete(context_d3d12);
+				context_d3d12 = nullptr;
+				windows.erase(id);
+				ERR_FAIL_V_MSG(INVALID_WINDOW_ID, "Failed to create D3D12 Window.");
+			}
+			wd.context_created = true;
+		}
+#endif
+
 #ifdef GLES3_ENABLED
 		if (gl_manager_native) {
 			if (gl_manager_native->window_create(id, wd.hWnd, hInstance, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top) != OK) {
@@ -4566,6 +4606,22 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 		}
 	}
 
+	// Note: Windows Ink API for pen input, available on Windows 8+ only.
+	// Note: DPI conversion API, available on Windows 8.1+ only.
+	HMODULE user32_lib = LoadLibraryW(L"user32.dll");
+	if (user32_lib) {
+		win8p_GetPointerType = (GetPointerTypePtr)GetProcAddress(user32_lib, "GetPointerType");
+		win8p_GetPointerPenInfo = (GetPointerPenInfoPtr)GetProcAddress(user32_lib, "GetPointerPenInfo");
+		win81p_LogicalToPhysicalPointForPerMonitorDPI = (LogicalToPhysicalPointForPerMonitorDPIPtr)GetProcAddress(user32_lib, "LogicalToPhysicalPointForPerMonitorDPI");
+		win81p_PhysicalToLogicalPointForPerMonitorDPI = (PhysicalToLogicalPointForPerMonitorDPIPtr)GetProcAddress(user32_lib, "PhysicalToLogicalPointForPerMonitorDPI");
+
+		winink_available = win8p_GetPointerType && win8p_GetPointerPenInfo;
+	}
+
+	if (winink_available) {
+		tablet_drivers.push_back("winink");
+	}
+
 	// Note: Wacom WinTab driver API for pen input, for devices incompatible with Windows Ink.
 	HMODULE wintab_lib = LoadLibraryW(L"wintab32.dll");
 	if (wintab_lib) {
@@ -4582,21 +4638,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 		tablet_drivers.push_back("wintab");
 	}
 
-	// Note: Windows Ink API for pen input, available on Windows 8+ only.
-	// Note: DPI conversion API, available on Windows 8.1+ only.
-	HMODULE user32_lib = LoadLibraryW(L"user32.dll");
-	if (user32_lib) {
-		win8p_GetPointerType = (GetPointerTypePtr)GetProcAddress(user32_lib, "GetPointerType");
-		win8p_GetPointerPenInfo = (GetPointerPenInfoPtr)GetProcAddress(user32_lib, "GetPointerPenInfo");
-		win81p_LogicalToPhysicalPointForPerMonitorDPI = (LogicalToPhysicalPointForPerMonitorDPIPtr)GetProcAddress(user32_lib, "LogicalToPhysicalPointForPerMonitorDPI");
-		win81p_PhysicalToLogicalPointForPerMonitorDPI = (PhysicalToLogicalPointForPerMonitorDPIPtr)GetProcAddress(user32_lib, "PhysicalToLogicalPointForPerMonitorDPI");
-
-		winink_available = win8p_GetPointerType && win8p_GetPointerPenInfo;
-	}
-
-	if (winink_available) {
-		tablet_drivers.push_back("winink");
-	}
+	tablet_drivers.push_back("dummy");
 
 	if (OS::get_singleton()->is_hidpi_allowed()) {
 		HMODULE Shcore = LoadLibraryW(L"Shcore.dll");
@@ -4644,9 +4686,26 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 		}
 	}
 #endif
+#if defined(D3D12_ENABLED)
+	if (rendering_driver == "d3d12") {
+		context_d3d12 = memnew(D3D12Context);
+		if (context_d3d12->initialize() != OK) {
+			memdelete(context_d3d12);
+			context_d3d12 = nullptr;
+			r_error = ERR_UNAVAILABLE;
+			return;
+		}
+	}
+#endif
 	// Init context and rendering device
 #if defined(GLES3_ENABLED)
 
+#if defined(__arm__) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+	// There's no native OpenGL drivers on Windows for ARM, switch to ANGLE over DX.
+	if (rendering_driver == "opengl3") {
+		rendering_driver = "opengl3_angle";
+	}
+#else
 	bool fallback = GLOBAL_GET("rendering/gl_compatibility/fallback_to_angle");
 	if (fallback && (rendering_driver == "opengl3")) {
 		Dictionary gl_info = detect_wgl();
@@ -4656,7 +4715,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 		Array device_list = GLOBAL_GET("rendering/gl_compatibility/force_angle_on_devices");
 		for (int i = 0; i < device_list.size(); i++) {
 			const Dictionary &device = device_list[i];
-			if (device.has("vendor") && device.has("name") && device["vendor"].operator String().to_upper() == gl_info["vendor"].operator String().to_upper() && (device["name"] == "*" || device["name"].operator String().to_upper() == gl_info["name"].operator String().to_upper())) {
+			if (device.has("vendor") && device.has("name") && gl_info["vendor"].operator String().to_upper().contains(device["vendor"].operator String().to_upper()) && (device["name"] == "*" || gl_info["name"].operator String().to_upper().contains(device["name"].operator String().to_upper()))) {
 				force_angle = true;
 				break;
 			}
@@ -4667,6 +4726,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 			rendering_driver = "opengl3_angle";
 		}
 	}
+#endif
 
 	if (rendering_driver == "opengl3") {
 		gl_manager_native = memnew(GLManagerNative_Windows);
@@ -4703,7 +4763,8 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 		if (p_screen == SCREEN_OF_MAIN_WINDOW) {
 			p_screen = SCREEN_PRIMARY;
 		}
-		window_position = screen_get_position(p_screen) + (screen_get_size(p_screen) - p_resolution) / 2;
+		Rect2i scr_rect = screen_get_usable_rect(p_screen);
+		window_position = scr_rect.position + (scr_rect.size - p_resolution) / 2;
 	}
 
 	WindowID main_window = _create_window(p_mode, p_vsync_mode, p_flags, Rect2i(window_position, p_resolution));
@@ -4720,10 +4781,17 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 	show_window(MAIN_WINDOW_ID);
 
 #if defined(VULKAN_ENABLED)
-
 	if (rendering_driver == "vulkan") {
 		rendering_device_vulkan = memnew(RenderingDeviceVulkan);
 		rendering_device_vulkan->initialize(context_vulkan);
+
+		RendererCompositorRD::make_current();
+	}
+#endif
+#if defined(D3D12_ENABLED)
+	if (rendering_driver == "d3d12") {
+		rendering_device_d3d12 = memnew(RenderingDeviceD3D12);
+		rendering_device_d3d12->initialize(context_d3d12);
 
 		RendererCompositorRD::make_current();
 	}
@@ -4761,6 +4829,9 @@ Vector<String> DisplayServerWindows::get_rendering_drivers_func() {
 
 #ifdef VULKAN_ENABLED
 	drivers.push_back("vulkan");
+#endif
+#ifdef D3D12_ENABLED
+	drivers.push_back("d3d12");
 #endif
 #ifdef GLES3_ENABLED
 	drivers.push_back("opengl3");
@@ -4826,6 +4897,11 @@ DisplayServerWindows::~DisplayServerWindows() {
 			context_vulkan->window_destroy(MAIN_WINDOW_ID);
 		}
 #endif
+#ifdef D3D12_ENABLED
+		if (context_d3d12) {
+			context_d3d12->window_destroy(MAIN_WINDOW_ID);
+		}
+#endif
 		if (wintab_available && windows[MAIN_WINDOW_ID].wtctx) {
 			wintab_WTClose(windows[MAIN_WINDOW_ID].wtctx);
 			windows[MAIN_WINDOW_ID].wtctx = 0;
@@ -4843,6 +4919,19 @@ DisplayServerWindows::~DisplayServerWindows() {
 	if (context_vulkan) {
 		memdelete(context_vulkan);
 		context_vulkan = nullptr;
+	}
+#endif
+
+#if defined(D3D12_ENABLED)
+	if (rendering_device_d3d12) {
+		rendering_device_d3d12->finalize();
+		memdelete(rendering_device_d3d12);
+		rendering_device_d3d12 = nullptr;
+	}
+
+	if (context_d3d12) {
+		memdelete(context_d3d12);
+		context_d3d12 = nullptr;
 	}
 #endif
 

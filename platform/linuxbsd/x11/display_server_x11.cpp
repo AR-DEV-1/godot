@@ -3875,7 +3875,7 @@ void DisplayServerX11::_xim_preedit_draw_callback(::XIM xim, ::XPointer client_d
 			ds->im_selection = Point2i();
 		}
 
-		OS_Unix::get_singleton()->get_main_loop()->notification(MainLoop::NOTIFICATION_OS_IME_UPDATE);
+		OS_Unix::get_singleton()->get_main_loop()->call_deferred(SNAME("notification"), MainLoop::NOTIFICATION_OS_IME_UPDATE);
 	}
 }
 
@@ -6065,33 +6065,36 @@ DisplayServerX11::DisplayServerX11(const String &p_rendering_driver, WindowMode 
 		}
 	}
 	if (rendering_driver == "opengl3") {
-		GLManager_X11::ContextType opengl_api_type = GLManager_X11::GLES_3_0_COMPATIBLE;
-
-		gl_manager = memnew(GLManager_X11(p_resolution, opengl_api_type));
-
-		if (gl_manager->initialize(x11_display) != OK) {
+		gl_manager = memnew(GLManager_X11(p_resolution, GLManager_X11::GLES_3_0_COMPATIBLE));
+		if (gl_manager->initialize(x11_display) != OK || gl_manager->open_display(x11_display) != OK) {
 			memdelete(gl_manager);
 			gl_manager = nullptr;
-			r_error = ERR_UNAVAILABLE;
-			return;
+			bool fallback = GLOBAL_GET("rendering/gl_compatibility/fallback_to_gles");
+			if (fallback) {
+				WARN_PRINT("Your video card drivers seem not to support the required OpenGL version, switching to OpenGLES.");
+				rendering_driver = "opengl3_es";
+			} else {
+				r_error = ERR_UNAVAILABLE;
+				ERR_FAIL_MSG("Could not initialize OpenGL.");
+			}
+		} else {
+			driver_found = true;
+			RasterizerGLES3::make_current(true);
 		}
-		driver_found = true;
-
-		RasterizerGLES3::make_current(true);
 	}
+
 	if (rendering_driver == "opengl3_es") {
 		gl_manager_egl = memnew(GLManagerEGL_X11);
-
 		if (gl_manager_egl->initialize() != OK) {
 			memdelete(gl_manager_egl);
 			gl_manager_egl = nullptr;
 			r_error = ERR_UNAVAILABLE;
-			return;
+			ERR_FAIL_MSG("Could not initialize OpenGLES.");
 		}
 		driver_found = true;
-
 		RasterizerGLES3::make_current(false);
 	}
+
 #endif
 	if (!driver_found) {
 		r_error = ERR_UNAVAILABLE;
@@ -6105,7 +6108,8 @@ DisplayServerX11::DisplayServerX11(const String &p_rendering_driver, WindowMode 
 		if (p_screen == SCREEN_OF_MAIN_WINDOW) {
 			p_screen = SCREEN_PRIMARY;
 		}
-		window_position = screen_get_position(p_screen) + (screen_get_size(p_screen) - p_resolution) / 2;
+		Rect2i scr_rect = screen_get_usable_rect(p_screen);
+		window_position = scr_rect.position + (scr_rect.size - p_resolution) / 2;
 	}
 
 	WindowID main_window = _create_window(p_mode, p_vsync_mode, p_flags, Rect2i(window_position, p_resolution));

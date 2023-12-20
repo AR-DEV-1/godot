@@ -79,6 +79,7 @@ class SceneTreeDock : public VBoxContainer {
 		TOOL_MULTI_EDIT,
 		TOOL_ERASE,
 		TOOL_COPY_NODE_PATH,
+		TOOL_SHOW_IN_FILE_SYSTEM,
 		TOOL_OPEN_DOCUMENTATION,
 		TOOL_AUTO_EXPAND,
 		TOOL_SCENE_EDITABLE_CHILDREN,
@@ -143,6 +144,7 @@ class SceneTreeDock : public VBoxContainer {
 	EditorSelection *editor_selection = nullptr;
 
 	List<Node *> node_clipboard;
+	HashSet<Node *> node_clipboard_edited_scene_owned;
 	String clipboard_source_scene;
 	HashMap<String, HashMap<Ref<Resource>, Ref<Resource>>> clipboard_resource_remap;
 

@@ -47,7 +47,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/gui/editor_dir_dialog.h"
 #include "editor/gui/editor_scene_tabs.h"
-#include "editor/import/resource_importer_scene.h"
+#include "editor/import/scene_import_settings.h"
 #include "editor/import_dock.h"
 #include "editor/plugins/editor_resource_tooltip_plugins.h"
 #include "editor/scene_create_dialog.h"
@@ -88,6 +88,7 @@ void FileSystemList::_line_editor_submit(String p_text) {
 bool FileSystemList::edit_selected() {
 	ERR_FAIL_COND_V_MSG(!is_anything_selected(), false, "No item selected.");
 	int s = get_current();
+	ERR_FAIL_COND_V_MSG(s < 0, false, "No current item selected.");
 	ensure_current_is_visible();
 
 	Rect2 rect;
@@ -733,7 +734,11 @@ void FileSystemDock::_navigate_to_path(const String &p_path, bool p_select_in_fa
 	_update_tree(get_uncollapsed_paths(), false, p_select_in_favorites, true);
 	if (display_mode != DISPLAY_MODE_TREE_ONLY) {
 		_update_file_list(false);
-		files->get_v_scroll_bar()->set_value(0);
+
+		// Reset the scroll for a directory.
+		if (p_path.ends_with("/")) {
+			files->get_v_scroll_bar()->set_value(0);
+		}
 	}
 
 	String file_name = p_path.get_file();
@@ -751,6 +756,14 @@ void FileSystemDock::_navigate_to_path(const String &p_path, bool p_select_in_fa
 void FileSystemDock::navigate_to_path(const String &p_path) {
 	file_list_search_box->clear();
 	_navigate_to_path(p_path);
+
+	// Ensure that the FileSystem dock is visible.
+	if (get_window() == get_tree()->get_root()) {
+		TabContainer *tab_container = (TabContainer *)get_parent_control();
+		tab_container->set_current_tab(tab_container->get_tab_idx_from_control((Control *)this));
+	} else {
+		get_window()->grab_focus();
+	}
 }
 
 void FileSystemDock::_file_list_thumbnail_done(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, const Variant &p_udata) {
@@ -903,12 +916,13 @@ void FileSystemDock::_sort_file_info_list(List<FileSystemDock::FileInfo> &r_file
 }
 
 void FileSystemDock::_update_file_list(bool p_keep_selection) {
-	// Register the previously selected items.
-	HashSet<String> cselection;
+	// Register the previously current and selected items.
+	HashSet<String> previous_selection;
+	HashSet<int> valid_selection;
 	if (p_keep_selection) {
 		for (int i = 0; i < files->get_item_count(); i++) {
 			if (files->is_selected(i)) {
-				cselection.insert(files->get_item_text(i));
+				previous_selection.insert(files->get_item_text(i));
 			}
 		}
 	}
@@ -1064,8 +1078,9 @@ void FileSystemDock::_update_file_list(bool p_keep_selection) {
 					Color this_folder_color = has_custom_color ? folder_colors[assigned_folder_colors[dpath]] : inherited_folder_color;
 					files->set_item_icon_modulate(-1, editor_is_dark_theme ? this_folder_color : this_folder_color * 1.75);
 
-					if (cselection.has(dname)) {
+					if (previous_selection.has(dname)) {
 						files->select(files->get_item_count() - 1, false);
+						valid_selection.insert(files->get_item_count() - 1);
 					}
 				}
 			}
@@ -1138,8 +1153,9 @@ void FileSystemDock::_update_file_list(bool p_keep_selection) {
 		}
 
 		// Select the items.
-		if (cselection.has(fname)) {
+		if (previous_selection.has(fname)) {
 			files->select(item_index, false);
+			valid_selection.insert(item_index);
 		}
 
 		if (!p_keep_selection && !file.is_empty() && fname == file) {
@@ -1155,14 +1171,17 @@ void FileSystemDock::_update_file_list(bool p_keep_selection) {
 		}
 		files->set_item_tooltip(item_index, tooltip);
 	}
+
+	// If we only have any selected items retained, we need to update the current idx.
+	if (!valid_selection.is_empty()) {
+		files->set_current(*valid_selection.begin());
+	}
 }
 
 void FileSystemDock::_select_file(const String &p_path, bool p_select_in_favorites) {
 	String fpath = p_path;
 	if (fpath.ends_with("/")) {
-		if (fpath != "res://") {
-			fpath = fpath.substr(0, fpath.length() - 1);
-		}
+		// Ignore a directory.
 	} else if (fpath != "Favorites") {
 		if (FileAccess::exists(fpath + ".import")) {
 			Ref<ConfigFile> config;
@@ -1181,12 +1200,12 @@ void FileSystemDock::_select_file(const String &p_path, bool p_select_in_favorit
 
 		String resource_type = ResourceLoader::get_resource_type(fpath);
 
-		if (resource_type == "PackedScene") {
+		if (resource_type == "PackedScene" || resource_type == "AnimationLibrary") {
 			bool is_imported = false;
 
 			{
 				List<String> importer_exts;
-				ResourceImporterScene::get_scene_singleton()->get_recognized_extensions(&importer_exts);
+				ResourceImporterScene::get_scene_importer_extensions(&importer_exts);
 				String extension = fpath.get_extension();
 				for (const String &E : importer_exts) {
 					if (extension.nocasecmp_to(E) == 0) {
@@ -1197,27 +1216,7 @@ void FileSystemDock::_select_file(const String &p_path, bool p_select_in_favorit
 			}
 
 			if (is_imported) {
-				ResourceImporterScene::get_scene_singleton()->show_advanced_options(fpath);
-			} else {
-				EditorNode::get_singleton()->open_request(fpath);
-			}
-		} else if (resource_type == "AnimationLibrary") {
-			bool is_imported = false;
-
-			{
-				List<String> importer_exts;
-				ResourceImporterScene::get_animation_singleton()->get_recognized_extensions(&importer_exts);
-				String extension = fpath.get_extension();
-				for (const String &E : importer_exts) {
-					if (extension.nocasecmp_to(E) == 0) {
-						is_imported = true;
-						break;
-					}
-				}
-			}
-
-			if (is_imported) {
-				ResourceImporterScene::get_animation_singleton()->show_advanced_options(fpath);
+				SceneImportSettingsDialog::get_singleton()->open_settings(p_path, resource_type == "AnimationLibrary");
 			} else {
 				EditorNode::get_singleton()->open_request(fpath);
 			}
@@ -1295,6 +1294,13 @@ void FileSystemDock::_fs_changed() {
 
 	if (file_list_vb->is_visible()) {
 		_update_file_list(true);
+	}
+
+	if (!select_after_scan.is_empty()) {
+		_navigate_to_path(select_after_scan);
+		select_after_scan.clear();
+		import_dock_needs_update = true;
+		_update_import_dock();
 	}
 
 	set_process(false);
@@ -1476,8 +1482,6 @@ void FileSystemDock::_try_duplicate_item(const FileOrFolder &p_item, const Strin
 		EditorNode::get_singleton()->add_io_error(TTR("Cannot move a folder into itself.") + "\n" + old_path + "\n");
 		return;
 	}
-	const_cast<FileSystemDock *>(this)->current_path = new_path;
-
 	Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_RESOURCES);
 
 	if (p_item.is_file) {
@@ -1584,6 +1588,9 @@ void FileSystemDock::_update_dependencies_after_move(const HashMap<String, Strin
 	// The following code assumes that the following holds:
 	// 1) EditorFileSystem contains the old paths/folder structure from before the rename/move.
 	// 2) ResourceLoader can use the new paths without needing to call rescan.
+
+	// The currently edited scene should be reloaded first, so get it's path (GH-82652).
+	const String &edited_scene_path = EditorNode::get_editor_data().get_scene_path(EditorNode::get_editor_data().get_edited_scene());
 	List<String> scenes_to_reload;
 	for (const String &E : p_file_owners) {
 		// Because we haven't called a rescan yet the found remap might still be an old path itself.
@@ -1593,7 +1600,11 @@ void FileSystemDock::_update_dependencies_after_move(const HashMap<String, Strin
 		const Error err = ResourceLoader::rename_dependencies(file, p_renames);
 		if (err == OK) {
 			if (ResourceLoader::get_resource_type(file) == "PackedScene") {
-				scenes_to_reload.push_back(file);
+				if (file == edited_scene_path) {
+					scenes_to_reload.push_front(file);
+				} else {
+					scenes_to_reload.push_back(file);
+				}
 			}
 		} else {
 			EditorNode::get_singleton()->add_io_error(TTR("Unable to update dependencies for:") + "\n" + E + "\n");
@@ -1788,7 +1799,9 @@ void FileSystemDock::_rename_operation_confirm() {
 	}
 	if (new_exist) {
 		EditorNode::get_singleton()->show_warning(TTR("A file or folder with this name already exists."));
-		ti->set_text(col_index, old_name);
+		if (ti) {
+			ti->set_text(col_index, old_name);
+		}
 		return;
 	}
 
@@ -1908,6 +1921,7 @@ void FileSystemDock::_move_operation_confirm(const String &p_to_path, bool p_cop
 		for (int i = 0; i < to_move.size(); i++) {
 			if (to_move[i].path != new_paths[i]) {
 				_try_duplicate_item(to_move[i], new_paths[i]);
+				select_after_scan = new_paths[i];
 				is_copied = true;
 			}
 		}
@@ -3462,6 +3476,14 @@ void FileSystemDock::set_file_sort(FileSortOption p_file_sort) {
 
 void FileSystemDock::_file_sort_popup(int p_id) {
 	set_file_sort((FileSortOption)p_id);
+}
+
+const HashMap<String, Color> &FileSystemDock::get_folder_colors() const {
+	return folder_colors;
+}
+
+Dictionary FileSystemDock::get_assigned_folder_colors() const {
+	return assigned_folder_colors;
 }
 
 MenuButton *FileSystemDock::_create_file_menu_button() {

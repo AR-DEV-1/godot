@@ -79,6 +79,7 @@ public:
 	virtual Node *import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err = nullptr);
 	virtual void get_import_options(const String &p_path, List<ResourceImporter::ImportOption> *r_options);
 	virtual Variant get_option_visibility(const String &p_path, bool p_for_animation, const String &p_option, const HashMap<StringName, Variant> &p_options);
+	virtual void handle_compatibility_options(HashMap<StringName, Variant> &p_import_params) const {}
 
 	EditorSceneFormatImporter() {}
 };
@@ -158,7 +159,7 @@ VARIANT_ENUM_CAST(EditorScenePostImportPlugin::InternalImportCategory)
 class ResourceImporterScene : public ResourceImporter {
 	GDCLASS(ResourceImporterScene, ResourceImporter);
 
-	static Vector<Ref<EditorSceneFormatImporter>> importers;
+	static Vector<Ref<EditorSceneFormatImporter>> scene_importers;
 	static Vector<Ref<EditorScenePostImportPlugin>> post_importer_plugins;
 
 	static ResourceImporterScene *scene_singleton;
@@ -215,7 +216,7 @@ class ResourceImporterScene : public ResourceImporter {
 
 	Array _get_skinned_pose_transforms(ImporterMeshInstance3D *p_src_mesh_node);
 	void _replace_owner(Node *p_node, Node *p_scene, Node *p_new_owner);
-	void _generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches);
+	Node *_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches);
 	void _add_shapes(Node *p_node, const Vector<Ref<Shape3D>> &p_shapes);
 
 	enum AnimationImportTracks {
@@ -242,10 +243,10 @@ public:
 	static void add_post_importer_plugin(const Ref<EditorScenePostImportPlugin> &p_plugin, bool p_first_priority = false);
 	static void remove_post_importer_plugin(const Ref<EditorScenePostImportPlugin> &p_plugin);
 
-	const Vector<Ref<EditorSceneFormatImporter>> &get_importers() const { return importers; }
-
-	static void add_importer(Ref<EditorSceneFormatImporter> p_importer, bool p_first_priority = false);
-	static void remove_importer(Ref<EditorSceneFormatImporter> p_importer);
+	const Vector<Ref<EditorSceneFormatImporter>> &get_scene_importers() const { return scene_importers; }
+	static void add_scene_importer(Ref<EditorSceneFormatImporter> p_importer, bool p_first_priority = false);
+	static void remove_scene_importer(Ref<EditorSceneFormatImporter> p_importer);
+	static void get_scene_importer_extensions(List<String> *p_extensions);
 
 	static void clean_up_importer_plugins();
 
@@ -276,6 +277,7 @@ public:
 
 	virtual void get_import_options(const String &p_path, List<ImportOption> *r_options, int p_preset = 0) const override;
 	virtual bool get_option_visibility(const String &p_path, const String &p_option, const HashMap<StringName, Variant> &p_options) const override;
+	virtual void handle_compatibility_options(HashMap<StringName, Variant> &p_import_params) const override;
 	// Import scenes *after* everything else (such as textures).
 	virtual int get_import_order() const override { return ResourceImporter::IMPORT_ORDER_SCENE; }
 

@@ -59,8 +59,6 @@ private:
 		MATERIAL_UNIFORM_SET = 3,
 	};
 
-	const int SAMPLERS_BINDING_FIRST_INDEX = 15;
-
 	enum {
 
 		SPEC_CONSTANT_USING_PROJECTOR = 0,
@@ -108,15 +106,9 @@ private:
 		GDCLASS(RenderBufferDataForwardMobile, RenderBufferCustomDataRD);
 
 	public:
-		// We can have:
-		// - 4 subpasses combining the full render cycle
-		// - 3 subpasses + 1 normal pass for tonemapping/glow/dof/etc (using fb for 2D buffer)
-		// - 2 subpasses + 1 normal pass for transparent + 1 normal pass for tonemapping/glow/dof/etc (using fb for 2D buffer)
 		enum FramebufferConfigType {
-			FB_CONFIG_ONE_PASS, // Single pass frame buffer for alpha pass
-			FB_CONFIG_TWO_SUBPASSES, // Opaque + Sky sub pass
-			FB_CONFIG_THREE_SUBPASSES, // Opaque + Sky + Alpha sub pass
-			FB_CONFIG_FOUR_SUBPASSES, // Opaque + Sky + Alpha sub pass + Tonemap pass
+			FB_CONFIG_RENDER_PASS, // Single pass framebuffer for normal rendering.
+			FB_CONFIG_RENDER_AND_POST_PASS, // Two subpasses, one for normal rendering, one for post processing.
 			FB_CONFIG_MAX
 		};
 
@@ -195,12 +187,12 @@ private:
 
 	/* Render Scene */
 
-	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, RID p_radiance_texture, bool p_use_directional_shadow_atlas = false, int p_index = 0);
+	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_use_directional_shadow_atlas = false, int p_index = 0);
 	void _pre_opaque_render(RenderDataRD *p_render_data);
 
 	uint64_t lightmap_texture_array_version = 0xFFFFFFFF;
 
-	void _update_render_base_uniform_set(const RendererRD::MaterialStorage::Samplers &p_samplers);
+	void _update_render_base_uniform_set();
 
 	void _update_instance_data_buffer(RenderListType p_render_list);
 	void _fill_instance_data(RenderListType p_render_list, uint32_t p_offset = 0, int32_t p_max_elements = -1, bool p_update_buffer = true);

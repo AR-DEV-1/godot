@@ -52,7 +52,7 @@ class RenderingServer : public Object {
 	int mm_policy = 0;
 	bool render_loop_enabled = true;
 
-	Array _get_array_from_surface(uint64_t p_format, Vector<uint8_t> p_vertex_data, Vector<uint8_t> p_attrib_data, Vector<uint8_t> p_skin_data, int p_vertex_len, Vector<uint8_t> p_index_data, int p_index_len, const AABB &p_aabb) const;
+	Array _get_array_from_surface(uint64_t p_format, Vector<uint8_t> p_vertex_data, Vector<uint8_t> p_attrib_data, Vector<uint8_t> p_skin_data, int p_vertex_len, Vector<uint8_t> p_index_data, int p_index_len, const AABB &p_aabb, const Vector4 &p_uv_scale) const;
 
 	const Vector2 SMALL_VEC2 = Vector2(CMP_EPSILON, CMP_EPSILON);
 	const Vector3 SMALL_VEC3 = Vector3(CMP_EPSILON, CMP_EPSILON, CMP_EPSILON);
@@ -327,6 +327,10 @@ public:
 		};
 		Vector<LOD> lods;
 		Vector<AABB> bone_aabbs;
+
+		// Transforms used in runtime bone AABBs compute.
+		// Since bone AABBs is saved in Mesh space, but bones is in Skeleton space.
+		Transform3D mesh_to_skeleton_xform;
 
 		Vector<uint8_t> blend_shape_data;
 
@@ -961,6 +965,7 @@ public:
 	enum ViewportRenderInfoType {
 		VIEWPORT_RENDER_INFO_TYPE_VISIBLE,
 		VIEWPORT_RENDER_INFO_TYPE_SHADOW,
+		VIEWPORT_RENDER_INFO_TYPE_CANVAS,
 		VIEWPORT_RENDER_INFO_TYPE_MAX
 	};
 
@@ -1490,6 +1495,9 @@ public:
 	virtual void canvas_occluder_polygon_set_cull_mode(RID p_occluder_polygon, CanvasOccluderPolygonCullMode p_mode) = 0;
 
 	virtual void canvas_set_shadow_texture_size(int p_size) = 0;
+
+	Rect2 debug_canvas_item_get_rect(RID p_item);
+	virtual Rect2 _debug_canvas_item_get_rect(RID p_item) = 0;
 
 	/* GLOBAL SHADER UNIFORMS */
 

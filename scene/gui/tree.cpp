@@ -70,19 +70,27 @@ void TreeItem::Cell::draw_icon(const RID &p_where, const Point2 &p_pos, const Si
 }
 
 void TreeItem::_changed_notify(int p_cell) {
-	tree->item_changed(p_cell, this);
+	if (tree) {
+		tree->item_changed(p_cell, this);
+	}
 }
 
 void TreeItem::_changed_notify() {
-	tree->item_changed(-1, this);
+	if (tree) {
+		tree->item_changed(-1, this);
+	}
 }
 
 void TreeItem::_cell_selected(int p_cell) {
-	tree->item_selected(p_cell, this);
+	if (tree) {
+		tree->item_selected(p_cell, this);
+	}
 }
 
 void TreeItem::_cell_deselected(int p_cell) {
-	tree->item_deselected(p_cell, this);
+	if (tree) {
+		tree->item_deselected(p_cell, this);
+	}
 }
 
 void TreeItem::_change_tree(Tree *p_tree) {
@@ -2050,7 +2058,7 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 
 			int text_width = item_width - theme_cache.inner_item_margin_left - theme_cache.inner_item_margin_right;
 			if (p_item->cells[i].icon.is_valid()) {
-				text_width -= p_item->cells[i].get_icon_size().x + theme_cache.h_separation;
+				text_width -= _get_cell_icon_size(p_item->cells[i]).x + theme_cache.h_separation;
 			}
 
 			p_item->cells.write[i].text_buf->set_width(text_width);
@@ -2187,26 +2195,37 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 					draw_item_rect(p_item->cells.write[i], item_rect, cell_color, icon_col, outline_size, font_outline_color);
 				} break;
 				case TreeItem::CELL_MODE_CHECK: {
-					Ref<Texture2D> checked = theme_cache.checked;
-					Ref<Texture2D> unchecked = theme_cache.unchecked;
-					Ref<Texture2D> indeterminate = theme_cache.indeterminate;
 					Point2i check_ofs = item_rect.position;
-					check_ofs.y += Math::floor((real_t)(item_rect.size.y - checked->get_height()) / 2);
+					check_ofs.y += Math::floor((real_t)(item_rect.size.y - theme_cache.checked->get_height()) / 2);
 
-					if (p_item->cells[i].indeterminate) {
-						indeterminate->draw(ci, check_ofs);
-					} else if (p_item->cells[i].checked) {
-						checked->draw(ci, check_ofs);
+					if (p_item->cells[i].editable) {
+						if (p_item->cells[i].indeterminate) {
+							theme_cache.indeterminate->draw(ci, check_ofs);
+						} else if (p_item->cells[i].checked) {
+							theme_cache.checked->draw(ci, check_ofs);
+						} else {
+							theme_cache.unchecked->draw(ci, check_ofs);
+						}
 					} else {
-						unchecked->draw(ci, check_ofs);
+						if (p_item->cells[i].indeterminate) {
+							theme_cache.indeterminate_disabled->draw(ci, check_ofs);
+						} else if (p_item->cells[i].checked) {
+							theme_cache.checked_disabled->draw(ci, check_ofs);
+						} else {
+							theme_cache.unchecked_disabled->draw(ci, check_ofs);
+						}
 					}
 
-					int check_w = checked->get_width() + theme_cache.h_separation;
+					int check_w = theme_cache.checked->get_width() + theme_cache.h_separation;
 
 					text_pos.x += check_w;
 
 					item_rect.size.x -= check_w;
 					item_rect.position.x += check_w;
+
+					if (!p_item->cells[i].editable) {
+						cell_color = theme_cache.font_disabled_color;
+					}
 
 					draw_item_rect(p_item->cells.write[i], item_rect, cell_color, icon_col, outline_size, font_outline_color);
 
@@ -4544,6 +4563,8 @@ TreeItem *Tree::get_selected() const {
 void Tree::set_selected(TreeItem *p_item, int p_column) {
 	ERR_FAIL_INDEX(p_column, columns.size());
 	ERR_FAIL_NULL(p_item);
+	ERR_FAIL_COND_MSG(p_item->get_tree() != this, "The provided TreeItem does not belong to this Tree. Ensure that the TreeItem is a part of the Tree before setting it as selected.");
+
 	select_single_item(p_item, get_root(), p_column);
 }
 
@@ -5525,7 +5546,10 @@ void Tree::_bind_methods() {
 
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, checked);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, unchecked);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, checked_disabled);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, unchecked_disabled);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, indeterminate);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, indeterminate_disabled);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, arrow);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, arrow_collapsed);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, Tree, arrow_collapsed_mirrored);
@@ -5539,6 +5563,7 @@ void Tree::_bind_methods() {
 
 	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, Tree, font_color);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, Tree, font_selected_color);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, Tree, font_disabled_color);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, Tree, drop_position_color);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_CONSTANT, Tree, h_separation);
 	BIND_THEME_ITEM(Theme::DATA_TYPE_CONSTANT, Tree, v_separation);

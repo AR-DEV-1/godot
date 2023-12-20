@@ -74,7 +74,7 @@ void ColorPicker::_notification(int p_what) {
 				sliders[i]->add_theme_constant_override(SNAME("center_grabber"), theme_cache.center_slider_grabbers);
 			}
 			alpha_label->set_custom_minimum_size(Size2(theme_cache.label_width, 0));
-			alpha_label->add_theme_constant_override(SNAME("center_grabber"), theme_cache.center_slider_grabbers);
+			alpha_slider->add_theme_constant_override(SNAME("center_grabber"), theme_cache.center_slider_grabbers);
 
 			for (int i = 0; i < MODE_BUTTON_COUNT; i++) {
 				mode_btns[i]->begin_bulk_theme_override();
@@ -88,6 +88,10 @@ void ColorPicker::_notification(int p_what) {
 			shape_popup->set_item_icon(shape_popup->get_item_index(SHAPE_HSV_WHEEL), theme_cache.shape_rect_wheel);
 			shape_popup->set_item_icon(shape_popup->get_item_index(SHAPE_VHS_CIRCLE), theme_cache.shape_circle);
 			shape_popup->set_item_icon(shape_popup->get_item_index(SHAPE_OKHSL_CIRCLE), theme_cache.shape_circle);
+
+			if (current_shape != SHAPE_NONE) {
+				btn_shape->set_icon(shape_popup->get_item_icon(current_shape));
+			}
 
 			internal_margin->begin_bulk_theme_override();
 			internal_margin->add_theme_constant_override(SNAME("margin_bottom"), theme_cache.content_margin);
@@ -552,16 +556,17 @@ void ColorPicker::_html_submitted(const String &p_html) {
 		return;
 	}
 
-	const Color previous_color = color;
-	color = Color::from_string(p_html.strip_edges(), previous_color);
+	Color new_color = Color::from_string(p_html.strip_edges(), color);
 
 	if (!is_editing_alpha()) {
-		color.a = previous_color.a;
+		new_color.a = color.a;
 	}
 
-	if (color == previous_color) {
+	if (new_color.to_argb32() == color.to_argb32()) {
 		return;
 	}
+	color = new_color;
+
 	if (!is_inside_tree()) {
 		return;
 	}
@@ -688,6 +693,12 @@ void ColorPicker::set_picker_shape(PickerShapeType p_shape) {
 	}
 
 	current_shape = p_shape;
+
+#ifdef TOOLS_ENABLED
+	if (editor_settings) {
+		editor_settings->call(SNAME("set_project_metadata"), "color_picker", "picker_shape", current_shape);
+	}
+#endif
 
 	_copy_color_to_hsv();
 
@@ -922,6 +933,12 @@ void ColorPicker::set_color_mode(ColorModeType p_mode) {
 	}
 
 	current_mode = p_mode;
+
+#ifdef TOOLS_ENABLED
+	if (editor_settings) {
+		editor_settings->call(SNAME("set_project_metadata"), "color_picker", "color_mode", current_mode);
+	}
+#endif
 
 	if (!is_inside_tree()) {
 		return;
@@ -1791,8 +1808,6 @@ ColorPicker::ColorPicker() {
 	shape_popup->add_radio_check_item("OKHSL Circle", SHAPE_OKHSL_CIRCLE);
 	shape_popup->set_item_checked(current_shape, true);
 	shape_popup->connect("id_pressed", callable_mp(this, &ColorPicker::set_picker_shape));
-
-	btn_shape->set_icon(shape_popup->get_item_icon(current_shape));
 
 	add_mode(new ColorModeRGB(this));
 	add_mode(new ColorModeHSV(this));
