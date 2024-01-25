@@ -77,6 +77,8 @@ void OpenXRInterface::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_motion_range", "hand", "motion_range"), &OpenXRInterface::set_motion_range);
 	ClassDB::bind_method(D_METHOD("get_motion_range", "hand"), &OpenXRInterface::get_motion_range);
 
+	ClassDB::bind_method(D_METHOD("get_hand_tracking_source", "hand"), &OpenXRInterface::get_hand_tracking_source);
+
 	ClassDB::bind_method(D_METHOD("get_hand_joint_flags", "hand", "joint"), &OpenXRInterface::get_hand_joint_flags);
 
 	ClassDB::bind_method(D_METHOD("get_hand_joint_rotation", "hand", "joint"), &OpenXRInterface::get_hand_joint_rotation);
@@ -96,6 +98,11 @@ void OpenXRInterface::_bind_methods() {
 	BIND_ENUM_CONSTANT(HAND_MOTION_RANGE_UNOBSTRUCTED);
 	BIND_ENUM_CONSTANT(HAND_MOTION_RANGE_CONFORM_TO_CONTROLLER);
 	BIND_ENUM_CONSTANT(HAND_MOTION_RANGE_MAX);
+
+	BIND_ENUM_CONSTANT(HAND_TRACKED_SOURCE_UNKNOWN);
+	BIND_ENUM_CONSTANT(HAND_TRACKED_SOURCE_UNOBSTRUCTED);
+	BIND_ENUM_CONSTANT(HAND_TRACKED_SOURCE_CONTROLLER);
+	BIND_ENUM_CONSTANT(HAND_TRACKED_SOURCE_MAX);
 
 	BIND_ENUM_CONSTANT(HAND_JOINT_PALM);
 	BIND_ENUM_CONSTANT(HAND_JOINT_WRIST);
@@ -679,15 +686,48 @@ Dictionary OpenXRInterface::get_system_info() {
 }
 
 bool OpenXRInterface::supports_play_area_mode(XRInterface::PlayAreaMode p_mode) {
-	return false;
+	if (p_mode == XRInterface::XR_PLAY_AREA_3DOF) {
+		return false;
+	}
+	return true;
 }
 
 XRInterface::PlayAreaMode OpenXRInterface::get_play_area_mode() const {
+	if (!openxr_api || !initialized) {
+		return XRInterface::XR_PLAY_AREA_UNKNOWN;
+	}
+
+	XrReferenceSpaceType reference_space = openxr_api->get_reference_space();
+
+	if (reference_space == XR_REFERENCE_SPACE_TYPE_LOCAL) {
+		return XRInterface::XR_PLAY_AREA_SITTING;
+	} else if (reference_space == XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT) {
+		return XRInterface::XR_PLAY_AREA_ROOMSCALE;
+	} else if (reference_space == XR_REFERENCE_SPACE_TYPE_STAGE) {
+		return XRInterface::XR_PLAY_AREA_STAGE;
+	}
+
 	return XRInterface::XR_PLAY_AREA_UNKNOWN;
 }
 
 bool OpenXRInterface::set_play_area_mode(XRInterface::PlayAreaMode p_mode) {
-	return false;
+	ERR_FAIL_COND_V_MSG(initialized, false, "Cannot change play area mode after OpenXR interface has been initialized");
+	ERR_FAIL_NULL_V(openxr_api, false);
+
+	XrReferenceSpaceType reference_space;
+
+	if (p_mode == XRInterface::XR_PLAY_AREA_SITTING) {
+		reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL;
+	} else if (p_mode == XRInterface::XR_PLAY_AREA_ROOMSCALE) {
+		reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT;
+	} else if (p_mode == XRInterface::XR_PLAY_AREA_STAGE) {
+		reference_space = XR_REFERENCE_SPACE_TYPE_STAGE;
+	} else {
+		return false;
+	}
+
+	openxr_api->set_requested_reference_space(reference_space);
+	return true;
 }
 
 PackedVector3Array OpenXRInterface::get_play_area() const {
@@ -1267,6 +1307,27 @@ OpenXRInterface::HandMotionRange OpenXRInterface::get_motion_range(const Hand p_
 	}
 
 	return HAND_MOTION_RANGE_MAX;
+}
+
+OpenXRInterface::HandTrackedSource OpenXRInterface::get_hand_tracking_source(const Hand p_hand) const {
+	ERR_FAIL_INDEX_V(p_hand, HAND_MAX, HAND_TRACKED_SOURCE_UNKNOWN);
+
+	OpenXRHandTrackingExtension *hand_tracking_ext = OpenXRHandTrackingExtension::get_singleton();
+	if (hand_tracking_ext && hand_tracking_ext->get_active()) {
+		OpenXRHandTrackingExtension::HandTrackedSource source = hand_tracking_ext->get_hand_tracking_source(OpenXRHandTrackingExtension::HandTrackedHands(p_hand));
+		switch (source) {
+			case OpenXRHandTrackingExtension::OPENXR_SOURCE_UNOBSTRUCTED:
+				return HAND_TRACKED_SOURCE_UNOBSTRUCTED;
+			case OpenXRHandTrackingExtension::OPENXR_SOURCE_CONTROLLER:
+				return HAND_TRACKED_SOURCE_CONTROLLER;
+			case OpenXRHandTrackingExtension::OPENXR_SOURCE_UNKNOWN:
+				return HAND_TRACKED_SOURCE_UNKNOWN;
+			default:
+				ERR_FAIL_V_MSG(HAND_TRACKED_SOURCE_UNKNOWN, "Unknown hand tracking source returned by OpenXR");
+		}
+	}
+
+	return HAND_TRACKED_SOURCE_UNKNOWN;
 }
 
 BitField<OpenXRInterface::HandJointFlags> OpenXRInterface::get_hand_joint_flags(Hand p_hand, HandJoints p_joint) const {

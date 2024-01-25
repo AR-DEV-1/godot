@@ -45,7 +45,7 @@ void ShaderRD::_add_stage(const char *p_code, StageType p_stage_type) {
 	String text;
 
 	for (int i = 0; i < lines.size(); i++) {
-		String l = lines[i];
+		const String &l = lines[i];
 		bool push_chunk = false;
 
 		StageTemplate::Chunk chunk;
@@ -463,6 +463,7 @@ bool ShaderRD::_load_from_cache(Version *p_version, int p_group) {
 }
 
 void ShaderRD::_save_to_cache(Version *p_version, int p_group) {
+	ERR_FAIL_COND(!shader_cache_dir_valid);
 	String sha1 = _version_get_sha1(p_version);
 	String path = shader_cache_dir.path_join(name).path_join(group_sha256[p_group]).path_join(sha1) + ".cache";
 

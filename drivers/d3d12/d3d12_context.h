@@ -110,6 +110,7 @@ private:
 		IMAGE_COUNT = FRAME_LAG + 1,
 	};
 
+	ComPtr<ID3D12DeviceFactory> device_factory;
 	ComPtr<IDXGIFactory2> dxgi_factory;
 	ComPtr<IDXGIAdapter> gpu;
 	DeviceLimits gpu_limits = {};
@@ -181,6 +182,7 @@ private:
 			void *p_context);
 
 	Error _initialize_debug_layers();
+	void _init_device_factory();
 
 	Error _select_adapter(int &r_index);
 	void _dump_adapter_info(int p_index);
@@ -232,15 +234,12 @@ public:
 	virtual void set_setup_buffer(RDD::CommandBufferID p_command_buffer) override final;
 	virtual void append_command_buffer(RDD::CommandBufferID p_command_buffer) override final;
 	void resize_notify();
-	virtual void flush(bool p_flush_setup = false, bool p_flush_pending = false) override final;
+	virtual void flush(bool p_flush_setup = false, bool p_flush_pending = false, bool p_sync = true) override final;
 	virtual Error prepare_buffers(RDD::CommandBufferID p_command_buffer) override final;
 	virtual void postpare_buffers(RDD::CommandBufferID p_command_buffer) override final;
 	virtual Error swap_buffers() override final;
 	virtual Error initialize() override final;
 
-	virtual void command_begin_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) override final;
-	virtual void command_insert_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) override final;
-	virtual void command_end_label(RDD::CommandBufferID p_command_buffer) override final;
 	void set_object_name(ID3D12Object *p_object, String p_object_name);
 
 	virtual String get_device_vendor_name() const override final;
@@ -253,6 +252,7 @@ public:
 	virtual DisplayServer::VSyncMode get_vsync_mode(DisplayServer::WindowID p_window = 0) const override final;
 
 	virtual RenderingDeviceDriver *get_driver(RID p_local_device = RID()) override final;
+	virtual bool is_debug_utils_enabled() const override final;
 
 	D3D12Context();
 	virtual ~D3D12Context();

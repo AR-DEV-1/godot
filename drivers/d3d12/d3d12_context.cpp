@@ -57,25 +57,11 @@
 #include <dxguids.h>
 #endif
 
+// Note: symbol is not available in MinGW and old MSVC import libraries.
+const CLSID CLSID_D3D12DeviceFactoryGodot = __uuidof(ID3D12DeviceFactory);
+
 extern "C" {
 char godot_nir_arch_name[32];
-
-#ifdef AGILITY_SDK_ENABLED
-__declspec(dllexport) extern const UINT D3D12SDKVersion = 610;
-#ifdef AGILITY_SDK_MULTIARCH_ENABLED
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
-__declspec(dllexport) extern const char *D3D12SDKPath = "\\.\\arm64";
-#elif defined(__arm__) || defined(_M_ARM)
-__declspec(dllexport) extern const char *D3D12SDKPath = "\\.\\arm32";
-#elif defined(__x86_64) || defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
-__declspec(dllexport) extern const char *D3D12SDKPath = "\\.\\x86_64";
-#elif defined(__i386) || defined(__i386__) || defined(_M_IX86)
-__declspec(dllexport) extern const char *D3D12SDKPath = "\\.\\x86_32";
-#endif
-#else
-__declspec(dllexport) extern const char *D3D12SDKPath = "\\.";
-#endif // AGILITY_SDK_MULTIARCH
-#endif // AGILITY_SDK_ENABLED
 }
 
 #ifdef PIX_ENABLED
@@ -88,6 +74,8 @@ __declspec(dllexport) extern const char *D3D12SDKPath = "\\.";
 #undef _MSC_VER
 #endif
 #endif
+
+#define D3D12_DEBUG_LAYER_BREAK_ON_ERROR 0
 
 void D3D12Context::_debug_message_func(
 		D3D12_MESSAGE_CATEGORY p_category,
@@ -295,7 +283,12 @@ Error D3D12Context::_check_capabilities() {
 
 Error D3D12Context::_initialize_debug_layers() {
 	ComPtr<ID3D12Debug> debug_controller;
-	HRESULT res = D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller));
+	HRESULT res;
+	if (device_factory) {
+		res = device_factory->GetConfigurationInterface(CLSID_D3D12Debug, IID_PPV_ARGS(&debug_controller));
+	} else {
+		res = D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller));
+	}
 	ERR_FAIL_COND_V(!SUCCEEDED(res), ERR_QUERY_FAILED);
 	debug_controller->EnableDebugLayer();
 	return OK;
@@ -501,7 +494,12 @@ void D3D12Context::_dump_adapter_info(int p_index) {
 }
 
 Error D3D12Context::_create_device(DeviceBasics &r_basics) {
-	HRESULT res = D3D12CreateDevice(gpu.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(r_basics.device.GetAddressOf()));
+	HRESULT res;
+	if (device_factory) {
+		res = device_factory->CreateDevice(gpu.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(r_basics.device.GetAddressOf()));
+	} else {
+		res = D3D12CreateDevice(gpu.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(r_basics.device.GetAddressOf()));
+	}
 	ERR_FAIL_COND_V_MSG(!SUCCEEDED(res), ERR_CANT_CREATE, "D3D12CreateDevice failed with error " + vformat("0x%08ux", (uint64_t)res) + ".");
 
 	// Create direct command queue.
@@ -566,6 +564,11 @@ Error D3D12Context::_create_device(DeviceBasics &r_basics) {
 
 		res = info_queue->PushStorageFilter(&filter);
 		ERR_FAIL_COND_V(!SUCCEEDED(res), ERR_CANT_CREATE);
+
+#if D3D12_DEBUG_LAYER_BREAK_ON_ERROR
+		res = info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+		ERR_FAIL_COND_V(!SUCCEEDED(res), ERR_CANT_CREATE);
+#endif
 	}
 
 	return OK;
@@ -808,7 +811,32 @@ Error D3D12Context::_update_swap_chain(Window *window) {
 	return OK;
 }
 
+void D3D12Context::_init_device_factory() {
+	uint32_t agility_sdk_version = GLOBAL_GET("rendering/rendering_device/d3d12/agility_sdk_version");
+	String agility_sdk_path = String(".\\") + Engine::get_singleton()->get_architecture_name();
+
+	// Note: symbol is not available in MinGW import library.
+	PFN_D3D12_GET_INTERFACE d3d_D3D12GetInterface = (PFN_D3D12_GET_INTERFACE)GetProcAddress(LoadLibraryW(L"D3D12.dll"), "D3D12GetInterface");
+	ERR_FAIL_COND(!d3d_D3D12GetInterface);
+
+	ID3D12SDKConfiguration *sdk_config = nullptr;
+	if (SUCCEEDED(d3d_D3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&sdk_config)))) {
+		ID3D12SDKConfiguration1 *sdk_config1 = nullptr;
+		if (SUCCEEDED(sdk_config->QueryInterface(&sdk_config1))) {
+			if (SUCCEEDED(sdk_config1->CreateDeviceFactory(agility_sdk_version, agility_sdk_path.ascii().get_data(), IID_PPV_ARGS(device_factory.GetAddressOf())))) {
+				d3d_D3D12GetInterface(CLSID_D3D12DeviceFactoryGodot, IID_PPV_ARGS(device_factory.GetAddressOf()));
+			} else if (SUCCEEDED(sdk_config1->CreateDeviceFactory(agility_sdk_version, ".\\", IID_PPV_ARGS(device_factory.GetAddressOf())))) {
+				d3d_D3D12GetInterface(CLSID_D3D12DeviceFactoryGodot, IID_PPV_ARGS(device_factory.GetAddressOf()));
+			}
+			sdk_config1->Release();
+		}
+		sdk_config->Release();
+	}
+}
+
 Error D3D12Context::initialize() {
+	_init_device_factory();
+
 	if (_use_validation_layers()) {
 		Error err = _initialize_debug_layers();
 		ERR_FAIL_COND_V(err, ERR_CANT_CREATE);
@@ -867,7 +895,9 @@ void D3D12Context::_wait_for_idle_queue(ID3D12CommandQueue *p_queue) {
 #endif
 }
 
-void D3D12Context::flush(bool p_flush_setup, bool p_flush_pending) {
+void D3D12Context::flush(bool p_flush_setup, bool p_flush_pending, bool p_sync) {
+	ERR_FAIL_COND_MSG(!p_sync, "Flush without sync is not supported."); // This is a special case for Vulkan on mobile XR hardware, not applicable to D3D12
+
 	if (p_flush_setup && command_list_queue[0]) {
 		md.queue->ExecuteCommandLists(1, command_list_queue.ptr());
 		command_list_queue[0] = nullptr;
@@ -1032,27 +1062,6 @@ void D3D12Context::local_device_free(RID p_local_device) {
 	local_device_owner.free(p_local_device);
 }
 
-void D3D12Context::command_begin_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) {
-#ifdef PIX_ENABLED
-	const RenderingDeviceDriverD3D12::CommandBufferInfo *cmd_buf_info = (const RenderingDeviceDriverD3D12::CommandBufferInfo *)p_command_buffer.id;
-	PIXBeginEvent(cmd_buf_info->cmd_list.Get(), p_color.to_argb32(), p_label_name.utf8().get_data());
-#endif
-}
-
-void D3D12Context::command_insert_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) {
-#ifdef PIX_ENABLED
-	const RenderingDeviceDriverD3D12::CommandBufferInfo *cmd_buf_info = (const RenderingDeviceDriverD3D12::CommandBufferInfo *)p_command_buffer.id;
-	PIXSetMarker(cmd_buf_info->cmd_list.Get(), p_color.to_argb32(), p_label_name.utf8().get_data());
-#endif
-}
-
-void D3D12Context::command_end_label(RDD::CommandBufferID p_command_buffer) {
-#ifdef PIX_ENABLED
-	const RenderingDeviceDriverD3D12::CommandBufferInfo *cmd_buf_info = (const RenderingDeviceDriverD3D12::CommandBufferInfo *)p_command_buffer.id;
-	PIXEndEvent(cmd_buf_info->cmd_list.Get());
-#endif
-}
-
 void D3D12Context::set_object_name(ID3D12Object *p_object, String p_object_name) {
 	ERR_FAIL_NULL(p_object);
 	int name_len = p_object_name.size();
@@ -1099,6 +1108,14 @@ RenderingDeviceDriver *D3D12Context::get_driver(RID p_local_device) {
 	} else {
 		return md.driver;
 	}
+}
+
+bool D3D12Context::is_debug_utils_enabled() const {
+#ifdef PIX_ENABLED
+	return true;
+#else
+	return false;
+#endif
 }
 
 D3D12Context::D3D12Context() {

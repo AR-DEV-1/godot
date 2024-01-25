@@ -558,7 +558,9 @@ public:
 	_FORCE_INLINE_ bool is_readable_from_caller_thread() const {
 		if (current_process_thread_group == nullptr) {
 			// No thread processing.
-			return is_current_thread_safe_for_nodes();
+			// Only accessible if node is outside the scene tree
+			// or access will happen from a node-safe thread.
+			return !data.inside_tree || is_current_thread_safe_for_nodes();
 		} else {
 			// Thread processing.
 			return true;
@@ -612,6 +614,7 @@ public:
 
 #ifdef TOOLS_ENABLED
 	String validate_child_name(Node *p_child);
+	String prevalidate_child_name(Node *p_child, StringName p_name);
 #endif
 	static String adjust_name_casing(const String &p_name);
 

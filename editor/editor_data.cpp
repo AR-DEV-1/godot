@@ -37,10 +37,10 @@
 #include "core/io/resource_loader.h"
 #include "editor/editor_node.h"
 #include "editor/editor_plugin.h"
-#include "editor/editor_scale.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/multi_node_edit.h"
 #include "editor/plugins/script_editor_plugin.h"
+#include "editor/themes/editor_scale.h"
 #include "scene/resources/packed_scene.h"
 
 void EditorSelectionHistory::cleanup_history() {
@@ -358,6 +358,12 @@ void EditorData::notify_edited_scene_changed() {
 void EditorData::notify_resource_saved(const Ref<Resource> &p_resource) {
 	for (int i = 0; i < editor_plugins.size(); i++) {
 		editor_plugins[i]->notify_resource_saved(p_resource);
+	}
+}
+
+void EditorData::notify_scene_saved(const String &p_path) {
+	for (int i = 0; i < editor_plugins.size(); i++) {
+		editor_plugins[i]->notify_scene_saved(p_path);
 	}
 }
 
@@ -1242,7 +1248,6 @@ void EditorSelection::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("remove_node", "node"), &EditorSelection::remove_node);
 	ClassDB::bind_method(D_METHOD("get_selected_nodes"), &EditorSelection::get_selected_nodes);
 	ClassDB::bind_method(D_METHOD("get_transformable_selected_nodes"), &EditorSelection::_get_transformable_selected_nodes);
-	ClassDB::bind_method(D_METHOD("_emit_change"), &EditorSelection::_emit_change);
 	ADD_SIGNAL(MethodInfo("selection_changed"));
 }
 
@@ -1290,7 +1295,7 @@ void EditorSelection::update() {
 	changed = false;
 	if (!emitted) {
 		emitted = true;
-		call_deferred(SNAME("_emit_change"));
+		callable_mp(this, &EditorSelection::_emit_change).call_deferred();
 	}
 }
 

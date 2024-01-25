@@ -33,7 +33,6 @@
 #include "container.h"
 #include "core/config/project_settings.h"
 #include "core/math/geometry_2d.h"
-#include "core/object/message_queue.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
@@ -205,7 +204,7 @@ void Control::set_root_layout_direction(int p_root_dir) {
 
 void Control::get_argument_options(const StringName &p_function, int p_idx, List<String> *r_options) const {
 	ERR_READ_THREAD_GUARD;
-	Node::get_argument_options(p_function, p_idx, r_options);
+	CanvasItem::get_argument_options(p_function, p_idx, r_options);
 
 	if (p_idx == 0) {
 		List<StringName> sn;
@@ -1420,13 +1419,15 @@ void Control::_set_global_position(const Point2 &p_point) {
 
 void Control::set_global_position(const Point2 &p_point, bool p_keep_offsets) {
 	ERR_MAIN_THREAD_GUARD;
-	Transform2D inv;
 
-	if (data.parent_canvas_item) {
-		inv = data.parent_canvas_item->get_global_transform().affine_inverse();
+	Transform2D global_transform_cache = get_global_transform();
+	if (p_point == global_transform_cache.get_origin()) {
+		return; // Edge case, but avoids calculation.
 	}
 
-	set_position(inv.xform(p_point), p_keep_offsets);
+	Point2 internal_position = global_transform_cache.affine_inverse().xform(p_point);
+
+	set_position(internal_position + data.pos_cache, p_keep_offsets);
 }
 
 Point2 Control::get_global_position() const {
@@ -1631,7 +1632,7 @@ void Control::update_minimum_size() {
 	}
 	data.updating_last_minimum_size = true;
 
-	MessageQueue::get_singleton()->push_callable(callable_mp(this, &Control::_update_minimum_size));
+	callable_mp(this, &Control::_update_minimum_size).call_deferred();
 }
 
 void Control::set_block_minimum_size_adjust(bool p_block) {

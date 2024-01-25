@@ -2395,9 +2395,11 @@ void VulkanContext::append_command_buffer(RDD::CommandBufferID p_command_buffer)
 	command_buffer_count++;
 }
 
-void VulkanContext::flush(bool p_flush_setup, bool p_flush_pending) {
+void VulkanContext::flush(bool p_flush_setup, bool p_flush_pending, bool p_sync) {
 	// Ensure everything else pending is executed.
-	vkDeviceWaitIdle(device);
+	if (p_sync) {
+		vkDeviceWaitIdle(device);
+	}
 
 	// Flush the pending setup buffer.
 
@@ -2440,7 +2442,9 @@ void VulkanContext::flush(bool p_flush_setup, bool p_flush_pending) {
 		ERR_FAIL_COND(err);
 	}
 
-	vkDeviceWaitIdle(device);
+	if (p_sync) {
+		vkDeviceWaitIdle(device);
+	}
 }
 
 Error VulkanContext::prepare_buffers(RDD::CommandBufferID p_command_buffer) {
@@ -2504,7 +2508,7 @@ Error VulkanContext::swap_buffers() {
 		return OK;
 	}
 
-	//	print_line("swapbuffers?");
+	//print_line("swap_buffers");
 	VkResult err;
 
 #if 0
@@ -2818,46 +2822,6 @@ void VulkanContext::local_device_free(RID p_local_device) {
 	local_device_owner.free(p_local_device);
 }
 
-void VulkanContext::command_begin_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) {
-	if (!is_instance_extension_enabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
-		return;
-	}
-
-	CharString cs = p_label_name.utf8();
-	VkDebugUtilsLabelEXT label;
-	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-	label.pNext = nullptr;
-	label.pLabelName = cs.get_data();
-	label.color[0] = p_color[0];
-	label.color[1] = p_color[1];
-	label.color[2] = p_color[2];
-	label.color[3] = p_color[3];
-	CmdBeginDebugUtilsLabelEXT((VkCommandBuffer)p_command_buffer.id, &label);
-}
-
-void VulkanContext::command_insert_label(RDD::CommandBufferID p_command_buffer, String p_label_name, const Color &p_color) {
-	if (!is_instance_extension_enabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
-		return;
-	}
-	CharString cs = p_label_name.utf8();
-	VkDebugUtilsLabelEXT label;
-	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-	label.pNext = nullptr;
-	label.pLabelName = cs.get_data();
-	label.color[0] = p_color[0];
-	label.color[1] = p_color[1];
-	label.color[2] = p_color[2];
-	label.color[3] = p_color[3];
-	CmdInsertDebugUtilsLabelEXT((VkCommandBuffer)p_command_buffer.id, &label);
-}
-
-void VulkanContext::command_end_label(RDD::CommandBufferID p_command_buffer) {
-	if (!is_instance_extension_enabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
-		return;
-	}
-	CmdEndDebugUtilsLabelEXT((VkCommandBuffer)p_command_buffer.id);
-}
-
 void VulkanContext::set_object_name(VkObjectType p_object_type, uint64_t p_object_handle, String p_object_name) {
 	if (!is_instance_extension_enabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
 		return;
@@ -2911,6 +2875,10 @@ RenderingDeviceDriver *VulkanContext::get_driver(RID p_local_device) {
 	} else {
 		return driver;
 	}
+}
+
+bool VulkanContext::is_debug_utils_enabled() const {
+	return is_instance_extension_enabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
 VulkanContext::VulkanContext() {

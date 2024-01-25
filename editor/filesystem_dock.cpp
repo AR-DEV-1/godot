@@ -42,17 +42,18 @@
 #include "editor/editor_feature_profile.h"
 #include "editor/editor_node.h"
 #include "editor/editor_resource_preview.h"
-#include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/editor_dir_dialog.h"
 #include "editor/gui/editor_scene_tabs.h"
-#include "editor/import/scene_import_settings.h"
+#include "editor/import/3d/scene_import_settings.h"
 #include "editor/import_dock.h"
 #include "editor/plugins/editor_resource_tooltip_plugins.h"
 #include "editor/scene_create_dialog.h"
 #include "editor/scene_tree_dock.h"
 #include "editor/shader_create_dialog.h"
+#include "editor/themes/editor_scale.h"
+#include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/item_list.h"
 #include "scene/gui/label.h"
 #include "scene/gui/line_edit.h"
@@ -388,7 +389,7 @@ void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, boo
 	const Color default_folder_color = get_theme_color(SNAME("folder_icon_color"), SNAME("FileDialog"));
 
 	for (int i = 0; i < favorite_paths.size(); i++) {
-		String favorite = favorite_paths[i];
+		const String &favorite = favorite_paths[i];
 		if (!favorite.begins_with("res://")) {
 			continue;
 		}
@@ -470,8 +471,6 @@ void FileSystemDock::_update_display_mode(bool p_force) {
 			case DISPLAY_MODE_HSPLIT:
 			case DISPLAY_MODE_VSPLIT:
 				const bool is_vertical = display_mode == DISPLAY_MODE_VSPLIT;
-				const int split_offset = split_box->get_split_offset();
-				is_vertical ? split_box_offset_h = split_offset : split_box_offset_v = split_offset;
 				split_box->set_vertical(is_vertical);
 
 				const int actual_offset = is_vertical ? split_box_offset_v : split_box_offset_h;
@@ -627,7 +626,7 @@ void FileSystemDock::_notification(int p_what) {
 			// Update editor dark theme & always show folders states from editor settings, redraw if needed.
 			bool do_redraw = false;
 
-			bool new_editor_is_dark_theme = EditorSettings::get_singleton()->is_dark_theme();
+			bool new_editor_is_dark_theme = EditorThemeManager::is_dark_theme();
 			if (new_editor_is_dark_theme != editor_is_dark_theme) {
 				editor_is_dark_theme = new_editor_is_dark_theme;
 				do_redraw = true;
@@ -653,7 +652,7 @@ void FileSystemDock::_notification(int p_what) {
 void FileSystemDock::_tree_multi_selected(Object *p_item, int p_column, bool p_selected) {
 	// Update the import dock.
 	import_dock_needs_update = true;
-	call_deferred(SNAME("_update_import_dock"));
+	callable_mp(this, &FileSystemDock::_update_import_dock).call_deferred();
 
 	// Return if we don't select something new.
 	if (!p_selected) {
@@ -767,7 +766,7 @@ void FileSystemDock::navigate_to_path(const String &p_path) {
 }
 
 void FileSystemDock::_file_list_thumbnail_done(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, const Variant &p_udata) {
-	if ((file_list_vb->is_visible_in_tree() || current_path == p_path.get_base_dir()) && p_preview.is_valid()) {
+	if ((file_list_vb->is_visible_in_tree() || current_path.trim_suffix("/") == p_path.get_base_dir()) && p_preview.is_valid()) {
 		Array uarr = p_udata;
 		int idx = uarr[0];
 		String file = uarr[1];
@@ -867,18 +866,7 @@ void FileSystemDock::_search(EditorFileSystemDirectory *p_path, List<FileInfo> *
 
 struct FileSystemDock::FileInfoTypeComparator {
 	bool operator()(const FileInfo &p_a, const FileInfo &p_b) const {
-		// Uses the extension, then the icon name to distinguish file types.
-		String icon_path_a = "";
-		String icon_path_b = "";
-		Ref<Texture2D> icon_a = EditorNode::get_singleton()->get_class_icon(p_a.type);
-		if (icon_a.is_valid()) {
-			icon_path_a = icon_a->get_name();
-		}
-		Ref<Texture2D> icon_b = EditorNode::get_singleton()->get_class_icon(p_b.type);
-		if (icon_b.is_valid()) {
-			icon_path_b = icon_b->get_name();
-		}
-		return NaturalNoCaseComparator()(p_a.name.get_extension() + icon_path_a + p_a.name.get_basename(), p_b.name.get_extension() + icon_path_b + p_b.name.get_basename());
+		return NaturalNoCaseComparator()(p_a.name.get_extension() + p_a.type + p_a.name.get_basename(), p_b.name.get_extension() + p_b.type + p_b.name.get_basename());
 	}
 };
 
@@ -1883,10 +1871,6 @@ Vector<String> FileSystemDock::_check_existing() {
 	return conflicting_items;
 }
 
-void FileSystemDock::_move_dialog_confirm(const String &p_path) {
-	_move_operation_confirm(p_path, move_dialog->is_copy_pressed());
-}
-
 void FileSystemDock::_move_operation_confirm(const String &p_to_path, bool p_copy, Overwrite p_overwrite) {
 	if (p_overwrite == OVERWRITE_UNDECIDED) {
 		to_move_path = p_to_path;
@@ -2301,7 +2285,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 			// Instantiate all selected scenes.
 			Vector<String> paths;
 			for (int i = 0; i < p_selected.size(); i++) {
-				String fpath = p_selected[i];
+				const String &fpath = p_selected[i];
 				if (EditorFileSystem::get_singleton()->get_file_type(fpath) == "PackedScene") {
 					paths.push_back(fpath);
 				}
@@ -2339,7 +2323,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 		case FILE_DEPENDENCIES: {
 			// Checkout the file dependencies.
 			if (!p_selected.is_empty()) {
-				String fpath = p_selected[0];
+				const String &fpath = p_selected[0];
 				deps_editor->edit(fpath);
 			}
 		} break;
@@ -2347,7 +2331,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 		case FILE_OWNERS: {
 			// Checkout the file owners.
 			if (!p_selected.is_empty()) {
-				String fpath = p_selected[0];
+				const String &fpath = p_selected[0];
 				owners_editor->show(fpath);
 			}
 		} break;
@@ -2357,12 +2341,13 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 			to_move.clear();
 			Vector<String> collapsed_paths = _remove_self_included_paths(p_selected);
 			for (int i = collapsed_paths.size() - 1; i >= 0; i--) {
-				String fpath = collapsed_paths[i];
+				const String &fpath = collapsed_paths[i];
 				if (fpath != "res://") {
 					to_move.push_back(FileOrFolder(fpath, !fpath.ends_with("/")));
 				}
 			}
 			if (to_move.size() > 0) {
+				move_dialog->config(p_selected);
 				move_dialog->popup_centered_ratio(0.4);
 			}
 		} break;
@@ -2404,7 +2389,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 			Vector<String> collapsed_paths = _remove_self_included_paths(p_selected);
 
 			for (int i = 0; i < collapsed_paths.size(); i++) {
-				String fpath = collapsed_paths[i];
+				const String &fpath = collapsed_paths[i];
 				if (fpath != "res://") {
 					if (fpath.ends_with("/")) {
 						remove_folders.push_back(fpath);
@@ -2476,7 +2461,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 
 		case FILE_COPY_PATH: {
 			if (!p_selected.is_empty()) {
-				String fpath = p_selected[0];
+				const String &fpath = p_selected[0];
 				DisplayServer::get_singleton()->clipboard_set(fpath);
 			}
 		} break;
@@ -2586,6 +2571,14 @@ void FileSystemDock::_change_split_mode() {
 
 	set_display_mode(next_mode);
 	emit_signal(SNAME("display_mode_changed"));
+}
+
+void FileSystemDock::_split_dragged(int p_offset) {
+	if (split_box->is_vertical()) {
+		split_box_offset_v = p_offset;
+	} else {
+		split_box_offset_h = p_offset;
+	}
 }
 
 void FileSystemDock::fix_dependencies(const String &p_for_file) {
@@ -2988,7 +2981,7 @@ void FileSystemDock::_folder_color_index_pressed(int p_index, PopupMenu *p_menu)
 
 	// Update project settings with new folder colors.
 	for (int i = 0; i < selected.size(); i++) {
-		String fpath = selected[i];
+		const String &fpath = selected[i];
 
 		if (chosen_color_name) {
 			assigned_folder_colors[fpath] = chosen_color_name;
@@ -3019,7 +3012,7 @@ void FileSystemDock::_file_and_folders_fill_popup(PopupMenu *p_popup, Vector<Str
 	bool all_not_favorites = true;
 
 	for (int i = 0; i < p_paths.size(); i++) {
-		String fpath = p_paths[i];
+		const String &fpath = p_paths[i];
 		if (fpath.ends_with("/")) {
 			foldernames.push_back(fpath);
 			all_files = false;
@@ -3177,7 +3170,7 @@ void FileSystemDock::_file_and_folders_fill_popup(PopupMenu *p_popup, Vector<Str
 	}
 
 	if (p_paths.size() == 1) {
-		const String fpath = p_paths[0];
+		const String &fpath = p_paths[0];
 
 #if !defined(ANDROID_ENABLED) && !defined(WEB_ENABLED)
 		p_popup->add_separator();
@@ -3326,7 +3319,7 @@ void FileSystemDock::_file_multi_selected(int p_index, bool p_selected) {
 
 	// Update the import dock.
 	import_dock_needs_update = true;
-	call_deferred(SNAME("_update_import_dock"));
+	callable_mp(this, &FileSystemDock::_update_import_dock).call_deferred();
 }
 
 void FileSystemDock::_tree_mouse_exited() {
@@ -3562,7 +3555,7 @@ void FileSystemDock::_update_import_dock() {
 	Vector<String> imports;
 	String import_type;
 	for (int i = 0; i < efiles.size(); i++) {
-		String fpath = efiles[i];
+		const String &fpath = efiles[i];
 		Ref<ConfigFile> cf;
 		cf.instantiate();
 		Error err = cf->load(fpath + ".import");
@@ -3642,15 +3635,10 @@ MenuButton *FileSystemDock::_create_file_menu_button() {
 }
 
 void FileSystemDock::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("_update_tree"), &FileSystemDock::_update_tree);
-
 	ClassDB::bind_method(D_METHOD("_file_list_thumbnail_done"), &FileSystemDock::_file_list_thumbnail_done);
 	ClassDB::bind_method(D_METHOD("_tree_thumbnail_done"), &FileSystemDock::_tree_thumbnail_done);
-	ClassDB::bind_method(D_METHOD("_select_file"), &FileSystemDock::_select_file);
 
 	ClassDB::bind_method(D_METHOD("navigate_to_path", "path"), &FileSystemDock::navigate_to_path);
-
-	ClassDB::bind_method(D_METHOD("_update_import_dock"), &FileSystemDock::_update_import_dock);
 
 	ClassDB::bind_method(D_METHOD("add_resource_tooltip_plugin", "plugin"), &FileSystemDock::add_resource_tooltip_plugin);
 	ClassDB::bind_method(D_METHOD("remove_resource_tooltip_plugin", "plugin"), &FileSystemDock::remove_resource_tooltip_plugin);
@@ -3665,6 +3653,70 @@ void FileSystemDock::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("folder_moved", PropertyInfo(Variant::STRING, "old_folder"), PropertyInfo(Variant::STRING, "new_folder")));
 
 	ADD_SIGNAL(MethodInfo("display_mode_changed"));
+}
+
+void FileSystemDock::save_layout_to_config(Ref<ConfigFile> p_layout, const String &p_section) const {
+	p_layout->set_value(p_section, "dock_filesystem_h_split_offset", get_h_split_offset());
+	p_layout->set_value(p_section, "dock_filesystem_v_split_offset", get_v_split_offset());
+	p_layout->set_value(p_section, "dock_filesystem_display_mode", get_display_mode());
+	p_layout->set_value(p_section, "dock_filesystem_file_sort", get_file_sort());
+	p_layout->set_value(p_section, "dock_filesystem_file_list_display_mode", get_file_list_display_mode());
+	PackedStringArray selected_files = get_selected_paths();
+	p_layout->set_value(p_section, "dock_filesystem_selected_paths", selected_files);
+	Vector<String> uncollapsed_paths = get_uncollapsed_paths();
+	p_layout->set_value(p_section, "dock_filesystem_uncollapsed_paths", uncollapsed_paths);
+}
+
+void FileSystemDock::load_layout_from_config(Ref<ConfigFile> p_layout, const String &p_section) {
+	if (p_layout->has_section_key(p_section, "dock_filesystem_h_split_offset")) {
+		int fs_h_split_ofs = p_layout->get_value(p_section, "dock_filesystem_h_split_offset");
+		set_h_split_offset(fs_h_split_ofs);
+	}
+
+	if (p_layout->has_section_key(p_section, "dock_filesystem_v_split_offset")) {
+		int fs_v_split_ofs = p_layout->get_value(p_section, "dock_filesystem_v_split_offset");
+		set_v_split_offset(fs_v_split_ofs);
+	}
+
+	if (p_layout->has_section_key(p_section, "dock_filesystem_display_mode")) {
+		DisplayMode dock_filesystem_display_mode = DisplayMode(int(p_layout->get_value(p_section, "dock_filesystem_display_mode")));
+		set_display_mode(dock_filesystem_display_mode);
+	}
+
+	if (p_layout->has_section_key(p_section, "dock_filesystem_file_sort")) {
+		FileSortOption dock_filesystem_file_sort = FileSortOption(int(p_layout->get_value(p_section, "dock_filesystem_file_sort")));
+		set_file_sort(dock_filesystem_file_sort);
+	}
+
+	if (p_layout->has_section_key(p_section, "dock_filesystem_file_list_display_mode")) {
+		FileListDisplayMode dock_filesystem_file_list_display_mode = FileListDisplayMode(int(p_layout->get_value(p_section, "dock_filesystem_file_list_display_mode")));
+		set_file_list_display_mode(dock_filesystem_file_list_display_mode);
+	}
+
+	if (p_layout->has_section_key(p_section, "dock_filesystem_selected_paths")) {
+		PackedStringArray dock_filesystem_selected_paths = p_layout->get_value(p_section, "dock_filesystem_selected_paths");
+		for (int i = 0; i < dock_filesystem_selected_paths.size(); i++) {
+			select_file(dock_filesystem_selected_paths[i]);
+		}
+	}
+
+	// Restore collapsed state.
+	PackedStringArray uncollapsed_tis;
+	if (p_layout->has_section_key(p_section, "dock_filesystem_uncollapsed_paths")) {
+		uncollapsed_tis = p_layout->get_value(p_section, "dock_filesystem_uncollapsed_paths");
+	} else {
+		uncollapsed_tis = { "res://" };
+	}
+
+	if (!uncollapsed_tis.is_empty()) {
+		for (int i = 0; i < uncollapsed_tis.size(); i++) {
+			TreeItem *uncollapsed_ti = get_tree_control()->get_item_with_metadata(uncollapsed_tis[i], 0);
+			if (uncollapsed_ti) {
+				uncollapsed_ti->set_collapsed(false);
+			}
+		}
+		get_tree_control()->queue_redraw();
+	}
 }
 
 FileSystemDock::FileSystemDock() {
@@ -3701,7 +3753,7 @@ FileSystemDock::FileSystemDock() {
 
 	assigned_folder_colors = ProjectSettings::get_singleton()->get_setting("file_customization/folder_colors");
 
-	editor_is_dark_theme = EditorSettings::get_singleton()->is_dark_theme();
+	editor_is_dark_theme = EditorThemeManager::is_dark_theme();
 
 	VBoxContainer *top_vbc = memnew(VBoxContainer);
 	add_child(top_vbc);
@@ -3767,6 +3819,8 @@ FileSystemDock::FileSystemDock() {
 
 	split_box = memnew(SplitContainer);
 	split_box->set_v_size_flags(SIZE_EXPAND_FILL);
+	split_box->connect("dragged", callable_mp(this, &FileSystemDock::_split_dragged));
+	split_box_offset_h = 240 * EDSCALE;
 	add_child(split_box);
 
 	tree = memnew(FileSystemTree);
@@ -3847,7 +3901,8 @@ FileSystemDock::FileSystemDock() {
 
 	move_dialog = memnew(EditorDirDialog);
 	add_child(move_dialog);
-	move_dialog->connect("dir_selected", callable_mp(this, &FileSystemDock::_move_dialog_confirm));
+	move_dialog->connect("move_pressed", callable_mp(this, &FileSystemDock::_move_operation_confirm).bind(false, OVERWRITE_UNDECIDED));
+	move_dialog->connect("copy_pressed", callable_mp(this, &FileSystemDock::_move_operation_confirm).bind(true, OVERWRITE_UNDECIDED));
 
 	overwrite_dialog = memnew(ConfirmationDialog);
 	add_child(overwrite_dialog);
@@ -3884,7 +3939,7 @@ FileSystemDock::FileSystemDock() {
 
 	make_dir_dialog = memnew(DirectoryCreateDialog);
 	add_child(make_dir_dialog);
-	make_dir_dialog->connect("dir_created", callable_mp(this, &FileSystemDock::_rescan));
+	make_dir_dialog->connect("dir_created", callable_mp(this, &FileSystemDock::_rescan).unbind(1));
 
 	make_scene_dialog = memnew(SceneCreateDialog);
 	add_child(make_scene_dialog);

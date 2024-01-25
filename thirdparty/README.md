@@ -342,7 +342,7 @@ See the patches in the `patches` directory.
 ## glslang
 
 - Upstream: https://github.com/KhronosGroup/glslang
-- Version: sdk-1.3.261.1 (76b52ebf77833908dc4c0dd6c70a9c357ac720bd, 2023)
+- Version: vulkan-sdk-1.3.268.0 (36d08c0d940cf307a23928299ef52c7970d8cee6, 2023)
 - License: glslang
 
 Version should be kept in sync with the one of the used Vulkan SDK (see `vulkan`
@@ -389,7 +389,7 @@ Files extracted from upstream source:
 ## icu4c
 
 - Upstream: https://github.com/unicode-org/icu
-- Version: 73.2 (680f521746a3bd6a86f25f25ee50a62d88b489cf, 2023)
+- Version: 74.1 (9edac7b78327a1cb58db29e2714b15f9fa14e4d7, 2023)
 - License: Unicode
 
 Files extracted from upstream source:
@@ -401,7 +401,7 @@ Files extracted from upstream source:
 
 Files generated from upstream source:
 
-- The `icudt73l.dat` built with the provided `godot_data.json` config file (see
+- The `icudt74l.dat` built with the provided `godot_data.json` config file (see
   https://github.com/unicode-org/icu/blob/master/docs/userguide/icu_data/buildtool.md
   for instructions).
 
@@ -411,7 +411,7 @@ Files generated from upstream source:
 3. Reconfigure ICU with custom data config:
    `ICU_DATA_FILTER_FILE={GODOT_SOURCE}/thirdparty/icu4c/godot_data.json ./runConfigureICU {PLATFORM} --with-data-packaging=common`
 4. Delete `data/out` folder and rebuild data: `cd data && rm -rf ./out && make`
-5. Copy `source/data/out/icudt73l.dat` to the `{GODOT_SOURCE}/thirdparty/icu4c/icudt73l.dat`
+5. Copy `source/data/out/icudt74l.dat` to the `{GODOT_SOURCE}/thirdparty/icu4c/icudt74l.dat`
 
 
 ## jpeg-compressor
@@ -605,7 +605,7 @@ that file when upgrading.
 ## minizip
 
 - Upstream: https://www.zlib.net
-- Version: 1.3 (zlib contrib, 2023)
+- Version: 1.3.1 (zlib contrib, 2024)
 - License: zlib
 
 Files extracted from the upstream source:
@@ -617,8 +617,6 @@ Files extracted from the upstream source:
 Important: Some files have Godot-made changes for use in core/io.
 They are marked with `/* GODOT start */` and `/* GODOT end */`
 comments and a patch is provided in the `patches` folder.
-
-Another patch is included to fix CVE-2023-45853.
 
 
 ## misc
@@ -727,7 +725,7 @@ with the provided patch.
 ## openxr
 
 - Upstream: https://github.com/KhronosGroup/OpenXR-SDK
-- Version: 1.0.31 (95fe35ffb383710a6e0567e958ead9a3b66e930c, 2023)
+- Version: 1.0.33 (dc1e23937fe45eabcce80f6588cf47449edb29d1, 2024)
 - License: Apache 2.0
 
 Files extracted from upstream source:
@@ -811,7 +809,7 @@ proposed by these libraries and better integrate them with Godot.
 ## spirv-reflect
 
 - Upstream: https://github.com/KhronosGroup/SPIRV-Reflect
-- Version: sdk-1.3.261.1 (d7e316e7d592d16ac58f1fe39b1df7babfe65c0d, 2023)
+- Version: vulkan-sdk-1.3.268.0 (3f468129720eded0cef4077302e491036d099856, 2023)
 - License: Apache 2.0
 
 Version should be kept in sync with the one of the used Vulkan SDK (see `vulkan`
@@ -861,7 +859,7 @@ instead of `miniz.h` as an external dependency.
 ## thorvg
 
 - Upstream: https://github.com/thorvg/thorvg
-- Version: 0.11.2 (b01fe9bf4461146304d3520d6dc699cf580a3744, 2023)
+- Version: 0.12.1 (d761e3c5622c0ffba2e5bb40da05751e2451e495, 2024)
 - License: MIT
 
 Files extracted from upstream source:
@@ -890,7 +888,7 @@ folder.
 ## volk
 
 - Upstream: https://github.com/zeux/volk
-- Version: sdk-1.3.261.1 (c1fc502109e539078d53c90ee1da9f32abbb0054, 2023)
+- Version: vulkan-sdk-1.3.268.0 (cdd08788bb7062031606d3da51e268f6bd491864, 2023)
 - License: MIT
 
 Unless there is a specific reason to package a more recent version, please stick
@@ -909,7 +907,7 @@ Files extracted from upstream source:
 ## vulkan
 
 - Upstream: https://github.com/KhronosGroup/Vulkan-Headers
-- Version: sdk-1.3.261.1 (85c2334e92e215cce34e8e0ed8b2dce4700f4a50, 2023)
+- Version: vulkan-sdk-1.3.268.0 (7b3466a1f47a9251ac1113efbe022ff016e2f95b, 2023)
 - License: Apache 2.0
 
 The vendored version should be kept in sync with volk, see above.
@@ -919,8 +917,8 @@ Files extracted from upstream source:
 - `include/`
 - `LICENSE.md`
 
-`vk_enum_string_helper.h` is taken from the matching `Vulkan-ValidationLayers`
-SDK release: https://github.com/KhronosGroup/Vulkan-ValidationLayers/blob/main/layers/vulkan/generated/vk_enum_string_helper.h
+`vk_enum_string_helper.h` is taken from the matching `Vulkan-Utility-Libraries`
+SDK release: https://github.com/KhronosGroup/Vulkan-Utility-Libraries/blob/main/include/vulkan/vk_enum_string_helper.h
 
 `vk_mem_alloc.h` is taken from https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
 Version: git (e88fff957b94f4b541ccac67a4290f07e52aa610), as advised by upstream:
@@ -962,7 +960,7 @@ Files extracted from upstream source:
 ## zlib
 
 - Upstream: https://www.zlib.net
-- Version: 1.3 (2023)
+- Version: 1.3.1 (2024)
 - License: zlib
 
 Files extracted from upstream source:
