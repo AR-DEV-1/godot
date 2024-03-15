@@ -43,19 +43,11 @@ static Transform2D _canvas_get_transform(RendererViewport::Viewport *p_viewport,
 	float scale = 1.0;
 	if (p_viewport->canvas_map.has(p_canvas->parent)) {
 		Transform2D c_xform = p_viewport->canvas_map[p_canvas->parent].transform;
-		if (p_viewport->snap_2d_transforms_to_pixel) {
-			c_xform.columns[2] = c_xform.columns[2].floor();
-		}
 		xf = xf * c_xform;
 		scale = p_canvas->parent_scale;
 	}
 
 	Transform2D c_xform = p_canvas_data->transform;
-
-	if (p_viewport->snap_2d_transforms_to_pixel) {
-		c_xform.columns[2] = c_xform.columns[2].floor();
-	}
-
 	xf = xf * c_xform;
 
 	if (scale != 1.0 && !RSG::canvas->disable_scale) {
@@ -228,6 +220,7 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
 }
 
 void RendererViewport::_draw_3d(Viewport *p_viewport) {
+#ifndef _3D_DISABLED
 	RENDER_TIMESTAMP("> Render 3D Scene");
 
 	Ref<XRInterface> xr_interface;
@@ -254,6 +247,7 @@ void RendererViewport::_draw_3d(Viewport *p_viewport) {
 	RSG::scene->render_camera(p_viewport->render_buffers, p_viewport->camera, p_viewport->scenario, p_viewport->self, p_viewport->internal_size, p_viewport->jitter_phase_count, screen_mesh_lod_threshold, p_viewport->shadow_atlas, xr_interface, &p_viewport->render_info);
 
 	RENDER_TIMESTAMP("< Render 3D Scene");
+#endif // _3D_DISABLED
 }
 
 void RendererViewport::_draw_viewport(Viewport *p_viewport) {
@@ -637,6 +631,7 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 void RendererViewport::draw_viewports(bool p_swap_buffers) {
 	timestamp_vp_map.clear();
 
+#ifndef _3D_DISABLED
 	// get our xr interface in case we need it
 	Ref<XRInterface> xr_interface;
 	XRServer *xr_server = XRServer::get_singleton();
@@ -647,6 +642,7 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 		// retrieve the interface responsible for rendering
 		xr_interface = xr_server->get_primary_interface();
 	}
+#endif // _3D_DISABLED
 
 	if (Engine::get_singleton()->is_editor_hint()) {
 		set_default_clear_color(GLOBAL_GET("rendering/environment/defaults/default_clear_color"));
@@ -679,6 +675,7 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 
 		bool visible = vp->viewport_to_screen_rect != Rect2();
 
+#ifndef _3D_DISABLED
 		if (vp->use_xr) {
 			if (xr_interface.is_valid()) {
 				// Ignore update mode we have to commit frames to our XR interface
@@ -692,7 +689,9 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 				visible = false;
 				vp->size = Size2();
 			}
-		} else {
+		} else
+#endif // _3D_DISABLED
+		{
 			if (vp->update_mode == RS::VIEWPORT_UPDATE_ALWAYS || vp->update_mode == RS::VIEWPORT_UPDATE_ONCE) {
 				visible = true;
 			}
@@ -730,6 +729,7 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 		RENDER_TIMESTAMP("> Render Viewport " + itos(i));
 
 		RSG::texture_storage->render_target_set_as_unused(vp->render_target);
+#ifndef _3D_DISABLED
 		if (vp->use_xr && xr_interface.is_valid()) {
 			// Inform XR interface we're about to render its viewport,
 			// if this returns false we don't render.
@@ -766,7 +766,9 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 					RSG::rasterizer->end_viewport(p_swap_buffers && blits.size() > 0);
 				}
 			}
-		} else {
+		} else
+#endif // _3D_DISABLED
+		{
 			RSG::texture_storage->render_target_set_override(vp->render_target, RID(), RID(), RID());
 
 			RSG::scene->set_debug_draw_mode(vp->debug_draw);
@@ -824,9 +826,6 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 	RENDER_TIMESTAMP("< Render Viewports");
 
 	if (p_swap_buffers && !blit_to_screen_list.is_empty()) {
-		// This needs to be called to make screen swapping more efficient.
-		RSG::rasterizer->prepare_for_blitting_render_targets();
-
 		for (const KeyValue<int, Vector<BlitToScreen>> &E : blit_to_screen_list) {
 			RSG::rasterizer->blit_render_targets_to_screen(E.key, E.value.ptr(), E.value.size());
 		}

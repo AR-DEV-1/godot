@@ -30,7 +30,8 @@
 
 #include "gltf_document_extension_physics.h"
 
-#include "scene/3d/area_3d.h"
+#include "scene/3d/physics/area_3d.h"
+#include "scene/3d/physics/static_body_3d.h"
 
 // Import process.
 Error GLTFDocumentExtensionPhysics::import_preflight(Ref<GLTFState> p_state, Vector<String> p_extensions) {
@@ -360,7 +361,7 @@ void GLTFDocumentExtensionPhysics::convert_scene_node(Ref<GLTFState> p_state, Re
 				gltf_shape->set_mesh_index(_get_or_insert_mesh_in_state(p_state, importer_mesh));
 			}
 		}
-		if (cast_to<Area3D>(_get_ancestor_collision_object(p_scene_node))) {
+		if (cast_to<Area3D>(_get_ancestor_collision_object(p_scene_node->get_parent()))) {
 			p_gltf_node->set_additional_data(StringName("GLTFPhysicsTriggerShape"), gltf_shape);
 		} else {
 			p_gltf_node->set_additional_data(StringName("GLTFPhysicsColliderShape"), gltf_shape);

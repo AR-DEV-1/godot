@@ -72,7 +72,7 @@
 
 using CameraOverride = EditorDebuggerNode::CameraOverride;
 
-void ScriptEditorDebugger::_put_msg(String p_message, Array p_data, uint64_t p_thread_id) {
+void ScriptEditorDebugger::_put_msg(const String &p_message, const Array &p_data, uint64_t p_thread_id) {
 	ERR_FAIL_COND(p_thread_id == Thread::UNASSIGNED_ID);
 	if (is_session_active()) {
 		Array msg;
@@ -387,7 +387,7 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 		}
 
 	} else if (p_msg == "set_pid") {
-		ERR_FAIL_COND(p_data.size() < 1);
+		ERR_FAIL_COND(p_data.is_empty());
 		remote_pid = p_data[0];
 	} else if (p_msg == "scene:click_ctrl") {
 		ERR_FAIL_COND(p_data.size() < 2);
@@ -495,7 +495,7 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 				} break;
 			}
 			EditorNode::get_log()->add_message(output_strings[i], msg_type);
-			emit_signal(SNAME("output"), output_strings[i]);
+			emit_signal(SNAME("output"), output_strings[i], msg_type);
 		}
 	} else if (p_msg == "performance:profile_frame") {
 		Vector<float> frame_data;
@@ -806,7 +806,7 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 		}
 		performance_profiler->update_monitors(monitors);
 	} else if (p_msg == "filesystem:update_file") {
-		ERR_FAIL_COND(p_data.size() < 1);
+		ERR_FAIL_COND(p_data.is_empty());
 		if (EditorFileSystem::get_singleton()) {
 			EditorFileSystem::get_singleton()->update_file(p_data[0]);
 		}
@@ -1757,7 +1757,7 @@ void ScriptEditorDebugger::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("remote_object_updated", PropertyInfo(Variant::INT, "id")));
 	ADD_SIGNAL(MethodInfo("remote_object_property_updated", PropertyInfo(Variant::INT, "id"), PropertyInfo(Variant::STRING, "property")));
 	ADD_SIGNAL(MethodInfo("remote_tree_updated"));
-	ADD_SIGNAL(MethodInfo("output"));
+	ADD_SIGNAL(MethodInfo("output", PropertyInfo(Variant::STRING, "msg"), PropertyInfo(Variant::INT, "level")));
 	ADD_SIGNAL(MethodInfo("stack_dump", PropertyInfo(Variant::ARRAY, "stack_dump")));
 	ADD_SIGNAL(MethodInfo("stack_frame_vars", PropertyInfo(Variant::INT, "num_vars")));
 	ADD_SIGNAL(MethodInfo("stack_frame_var", PropertyInfo(Variant::ARRAY, "data")));

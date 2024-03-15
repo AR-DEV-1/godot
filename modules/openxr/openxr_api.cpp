@@ -46,18 +46,18 @@
 #include "openxr_platform_inc.h"
 
 #ifdef VULKAN_ENABLED
-#include "extensions/openxr_vulkan_extension.h"
+#include "extensions/platform/openxr_vulkan_extension.h"
 #endif
 
 #if defined(GLES3_ENABLED) && !defined(MACOS_ENABLED)
-#include "extensions/openxr_opengl_extension.h"
+#include "extensions/platform/openxr_opengl_extension.h"
 #endif
 
 #include "extensions/openxr_composition_layer_depth_extension.h"
 #include "extensions/openxr_fb_display_refresh_rate_extension.h"
 #include "extensions/openxr_fb_foveation_extension.h"
-#include "extensions/openxr_fb_passthrough_extension_wrapper.h"
 #include "extensions/openxr_fb_update_swapchain_extension.h"
+#include "extensions/openxr_hand_tracking_extension.h"
 
 #ifdef ANDROID_ENABLED
 #define OPENXR_LOADER_NAME "libopenxr_loader.so"
@@ -680,71 +680,85 @@ bool OpenXRAPI::is_reference_space_supported(XrReferenceSpaceType p_reference_sp
 	return false;
 }
 
-bool OpenXRAPI::setup_spaces() {
-	XrResult result;
+bool OpenXRAPI::setup_play_space() {
+	ERR_FAIL_COND_V(session == XR_NULL_HANDLE, false);
 
 	XrPosef identityPose = {
 		{ 0.0, 0.0, 0.0, 1.0 },
 		{ 0.0, 0.0, 0.0 }
 	};
 
-	ERR_FAIL_COND_V(session == XR_NULL_HANDLE, false);
+	XrReferenceSpaceType new_reference_space;
+	XrSpace new_play_space = XR_NULL_HANDLE;
+	bool will_emulate_local_floor = false;
 
-	// create play space
-	{
-		emulating_local_floor = false;
+	if (is_reference_space_supported(requested_reference_space)) {
+		new_reference_space = requested_reference_space;
+	} else if (requested_reference_space == XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT && is_reference_space_supported(XR_REFERENCE_SPACE_TYPE_STAGE)) {
+		print_verbose("OpenXR: LOCAL_FLOOR space isn't supported, emulating using STAGE and LOCAL spaces.");
 
-		if (is_reference_space_supported(requested_reference_space)) {
-			reference_space = requested_reference_space;
-		} else if (requested_reference_space == XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT && is_reference_space_supported(XR_REFERENCE_SPACE_TYPE_STAGE)) {
-			print_verbose("OpenXR: LOCAL_FLOOR space isn't supported, emulating using STAGE and LOCAL spaces.");
-
-			reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL;
-			emulating_local_floor = true;
-
-			// We'll use the STAGE space to get the floor height, but we can't do that until
-			// after xrWaitFrame(), so just set this flag for now.
-			should_reset_emulated_floor_height = true;
-
-		} else {
-			// Fallback on LOCAL, which all OpenXR runtimes are required to support.
-			print_verbose(String("OpenXR: ") + OpenXRUtil::get_reference_space_name(requested_reference_space) + String(" isn't supported, defaulting to LOCAL space."));
-			reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL;
-		}
-
-		XrReferenceSpaceCreateInfo play_space_create_info = {
-			XR_TYPE_REFERENCE_SPACE_CREATE_INFO, // type
-			nullptr, // next
-			reference_space, // referenceSpaceType
-			identityPose, // poseInReferenceSpace
-		};
-
-		result = xrCreateReferenceSpace(session, &play_space_create_info, &play_space);
-		if (XR_FAILED(result)) {
-			print_line("OpenXR: Failed to create play space [", get_error_string(result), "]");
-			return false;
-		}
+		new_reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL;
+		will_emulate_local_floor = true;
+	} else {
+		// Fallback on LOCAL, which all OpenXR runtimes are required to support.
+		print_verbose(String("OpenXR: ") + OpenXRUtil::get_reference_space_name(requested_reference_space) + String(" isn't supported, defaulting to LOCAL space."));
+		new_reference_space = XR_REFERENCE_SPACE_TYPE_LOCAL;
 	}
 
-	// create view space
-	{
-		if (!is_reference_space_supported(XR_REFERENCE_SPACE_TYPE_VIEW)) {
-			print_line("OpenXR: reference space XR_REFERENCE_SPACE_TYPE_VIEW is not supported.");
-			return false;
-		}
+	XrReferenceSpaceCreateInfo play_space_create_info = {
+		XR_TYPE_REFERENCE_SPACE_CREATE_INFO, // type
+		nullptr, // next
+		new_reference_space, // referenceSpaceType
+		identityPose, // poseInReferenceSpace
+	};
 
-		XrReferenceSpaceCreateInfo view_space_create_info = {
-			XR_TYPE_REFERENCE_SPACE_CREATE_INFO, // type
-			nullptr, // next
-			XR_REFERENCE_SPACE_TYPE_VIEW, // referenceSpaceType
-			identityPose // poseInReferenceSpace
-		};
+	XrResult result = xrCreateReferenceSpace(session, &play_space_create_info, &new_play_space);
+	if (XR_FAILED(result)) {
+		print_line("OpenXR: Failed to create play space [", get_error_string(result), "]");
+		return false;
+	}
 
-		result = xrCreateReferenceSpace(session, &view_space_create_info, &view_space);
-		if (XR_FAILED(result)) {
-			print_line("OpenXR: Failed to create view space [", get_error_string(result), "]");
-			return false;
-		}
+	// If we've previously created a play space, clean it up first.
+	if (play_space != XR_NULL_HANDLE) {
+		xrDestroySpace(play_space);
+	}
+	play_space = new_play_space;
+	reference_space = new_reference_space;
+
+	emulating_local_floor = will_emulate_local_floor;
+	if (emulating_local_floor) {
+		// We'll use the STAGE space to get the floor height, but we can't do that until
+		// after xrWaitFrame(), so just set this flag for now.
+		should_reset_emulated_floor_height = true;
+	}
+
+	return true;
+}
+
+bool OpenXRAPI::setup_view_space() {
+	ERR_FAIL_COND_V(session == XR_NULL_HANDLE, false);
+
+	if (!is_reference_space_supported(XR_REFERENCE_SPACE_TYPE_VIEW)) {
+		print_line("OpenXR: reference space XR_REFERENCE_SPACE_TYPE_VIEW is not supported.");
+		return false;
+	}
+
+	XrPosef identityPose = {
+		{ 0.0, 0.0, 0.0, 1.0 },
+		{ 0.0, 0.0, 0.0 }
+	};
+
+	XrReferenceSpaceCreateInfo view_space_create_info = {
+		XR_TYPE_REFERENCE_SPACE_CREATE_INFO, // type
+		nullptr, // next
+		XR_REFERENCE_SPACE_TYPE_VIEW, // referenceSpaceType
+		identityPose // poseInReferenceSpace
+	};
+
+	XrResult result = xrCreateReferenceSpace(session, &view_space_create_info, &view_space);
+	if (XR_FAILED(result)) {
+		print_line("OpenXR: Failed to create view space [", get_error_string(result), "]");
+		return false;
 	}
 
 	return true;
@@ -1262,10 +1276,14 @@ void OpenXRAPI::set_view_configuration(XrViewConfigurationType p_view_configurat
 	view_configuration = p_view_configuration;
 }
 
-void OpenXRAPI::set_requested_reference_space(XrReferenceSpaceType p_requested_reference_space) {
-	ERR_FAIL_COND(is_initialized());
-
+bool OpenXRAPI::set_requested_reference_space(XrReferenceSpaceType p_requested_reference_space) {
 	requested_reference_space = p_requested_reference_space;
+
+	if (is_initialized()) {
+		return setup_play_space();
+	}
+
+	return true;
 }
 
 void OpenXRAPI::set_submit_depth_buffer(bool p_submit_depth_buffer) {
@@ -1466,7 +1484,12 @@ bool OpenXRAPI::initialize_session() {
 		return false;
 	}
 
-	if (!setup_spaces()) {
+	if (!setup_play_space()) {
+		destroy_session();
+		return false;
+	}
+
+	if (!setup_view_space()) {
 		destroy_session();
 		return false;
 	}
@@ -1497,6 +1520,10 @@ void OpenXRAPI::unregister_extension_wrapper(OpenXRExtensionWrapper *p_extension
 	registered_extension_wrappers.erase(p_extension_wrapper);
 }
 
+const Vector<OpenXRExtensionWrapper *> &OpenXRAPI::get_registered_extension_wrappers() {
+	return registered_extension_wrappers;
+}
+
 void OpenXRAPI::register_extension_metadata() {
 	for (OpenXRExtensionWrapper *extension_wrapper : registered_extension_wrappers) {
 		extension_wrapper->on_register_metadata();
@@ -1505,9 +1532,21 @@ void OpenXRAPI::register_extension_metadata() {
 
 void OpenXRAPI::cleanup_extension_wrappers() {
 	for (OpenXRExtensionWrapper *extension_wrapper : registered_extension_wrappers) {
-		memdelete(extension_wrapper);
+		// Fix crash when the extension wrapper comes from GDExtension.
+		OpenXRExtensionWrapperExtension *gdextension_extension_wrapper = dynamic_cast<OpenXRExtensionWrapperExtension *>(extension_wrapper);
+		if (gdextension_extension_wrapper) {
+			memdelete(gdextension_extension_wrapper);
+		} else {
+			memdelete(extension_wrapper);
+		}
 	}
 	registered_extension_wrappers.clear();
+}
+
+XrHandTrackerEXT OpenXRAPI::get_hand_tracker(int p_hand_index) {
+	ERR_FAIL_INDEX_V(p_hand_index, OpenXRHandTrackingExtension::HandTrackedHands::OPENXR_MAX_TRACKED_HANDS, XR_NULL_HANDLE);
+	OpenXRHandTrackingExtension::HandTrackedHands hand = static_cast<OpenXRHandTrackingExtension::HandTrackedHands>(p_hand_index);
+	return OpenXRHandTrackingExtension::get_singleton()->get_hand_tracker(hand)->hand_tracker;
 }
 
 Size2 OpenXRAPI::get_recommended_target_size() {
@@ -2041,18 +2080,29 @@ void OpenXRAPI::end_frame() {
 		projection_views[eye].pose = views[eye].pose;
 	}
 
-	Vector<const XrCompositionLayerBaseHeader *> layers_list;
+	Vector<OrderedCompositionLayer> ordered_layers_list;
+	bool projection_layer_is_first = true;
 
 	// Add composition layers from providers
 	for (OpenXRCompositionLayerProvider *provider : composition_layer_providers) {
-		XrCompositionLayerBaseHeader *layer = provider->get_composition_layer();
-		if (layer) {
-			layers_list.push_back(layer);
+		for (int i = 0; i < provider->get_composition_layer_count(); i++) {
+			OrderedCompositionLayer layer = {
+				provider->get_composition_layer(i),
+				provider->get_composition_layer_order(i),
+			};
+			if (layer.composition_layer) {
+				ordered_layers_list.push_back(layer);
+				if (layer.sort_order == 0) {
+					WARN_PRINT_ONCE_ED("Composition layer returned sort order 0, it may be overwritten by projection layer.");
+				} else if (layer.sort_order < 0) {
+					projection_layer_is_first = false;
+				}
+			}
 		}
 	}
 
 	XrCompositionLayerFlags layer_flags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
-	if (layers_list.size() > 0 || environment_blend_mode != XR_ENVIRONMENT_BLEND_MODE_OPAQUE) {
+	if (!projection_layer_is_first || environment_blend_mode != XR_ENVIRONMENT_BLEND_MODE_OPAQUE) {
 		layer_flags |= XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 	}
 
@@ -2064,7 +2114,16 @@ void OpenXRAPI::end_frame() {
 		view_count, // viewCount
 		projection_views, // views
 	};
-	layers_list.push_back((const XrCompositionLayerBaseHeader *)&projection_layer);
+	ordered_layers_list.push_back({ (const XrCompositionLayerBaseHeader *)&projection_layer, 0 });
+
+	// Sort our layers.
+	ordered_layers_list.sort_custom<OrderedCompositionLayer>();
+
+	// Now make a list we can pass on to OpenXR.
+	Vector<const XrCompositionLayerBaseHeader *> layers_list;
+	for (OrderedCompositionLayer &ordered_layer : ordered_layers_list) {
+		layers_list.push_back(ordered_layer.composition_layer);
+	}
 
 	XrFrameEndInfo frame_end_info = {
 		XR_TYPE_FRAME_END_INFO, // type
@@ -2831,7 +2890,7 @@ bool OpenXRAPI::sync_action_sets(const Vector<RID> p_active_sets) {
 		}
 	}
 
-	ERR_FAIL_COND_V(active_sets.size() == 0, false);
+	ERR_FAIL_COND_V(active_sets.is_empty(), false);
 
 	XrActionsSyncInfo sync_info = {
 		XR_TYPE_ACTIONS_SYNC_INFO, // type
@@ -3095,11 +3154,30 @@ bool OpenXRAPI::is_environment_blend_mode_supported(XrEnvironmentBlendMode p_ble
 }
 
 bool OpenXRAPI::set_environment_blend_mode(XrEnvironmentBlendMode p_blend_mode) {
+	if (emulate_environment_blend_mode_alpha_blend && p_blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) {
+		requested_environment_blend_mode = XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND;
+		environment_blend_mode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+		return true;
+	}
 	// We allow setting this when not initialized and will check if it is supported when initializing.
 	// After OpenXR is initialized we verify we're setting a supported blend mode.
-	if (!is_initialized() || is_environment_blend_mode_supported(p_blend_mode)) {
+	else if (!is_initialized() || is_environment_blend_mode_supported(p_blend_mode)) {
+		requested_environment_blend_mode = p_blend_mode;
 		environment_blend_mode = p_blend_mode;
 		return true;
 	}
 	return false;
+}
+
+void OpenXRAPI::set_emulate_environment_blend_mode_alpha_blend(bool p_enabled) {
+	emulate_environment_blend_mode_alpha_blend = p_enabled;
+}
+
+OpenXRAPI::OpenXRAlphaBlendModeSupport OpenXRAPI::is_environment_blend_mode_alpha_blend_supported() {
+	if (is_environment_blend_mode_supported(XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)) {
+		return OPENXR_ALPHA_BLEND_MODE_SUPPORT_REAL;
+	} else if (emulate_environment_blend_mode_alpha_blend) {
+		return OPENXR_ALPHA_BLEND_MODE_SUPPORT_EMULATING;
+	}
+	return OPENXR_ALPHA_BLEND_MODE_SUPPORT_NONE;
 }

@@ -61,7 +61,7 @@
 #include "servers/rendering/rendering_device.h"
 
 #if defined(VULKAN_ENABLED)
-#include "x11/vulkan_context_x11.h"
+#include "x11/rendering_context_driver_vulkan_x11.h"
 #endif
 #endif
 
@@ -144,7 +144,7 @@ class DisplayServerX11 : public DisplayServer {
 	GLManagerEGL_X11 *gl_manager_egl = nullptr;
 #endif
 #if defined(RD_ENABLED)
-	ApiContextRD *context_rd = nullptr;
+	RenderingContextDriver *rendering_context = nullptr;
 	RenderingDevice *rendering_device = nullptr;
 #endif
 
@@ -156,6 +156,7 @@ class DisplayServerX11 : public DisplayServer {
 #ifdef SPEECHD_ENABLED
 	TTS_Linux *tts = nullptr;
 #endif
+	NativeMenu *native_menu = nullptr;
 
 #if defined(DBUS_ENABLED)
 	FreeDesktopPortalDesktop *portal_desktop = nullptr;
@@ -400,8 +401,10 @@ public:
 #if defined(DBUS_ENABLED)
 	virtual bool is_dark_mode_supported() const override;
 	virtual bool is_dark_mode() const override;
+	virtual void set_system_theme_change_callback(const Callable &p_callable) override;
 
 	virtual Error file_dialog_show(const String &p_title, const String &p_current_directory, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const Callable &p_callback) override;
+	virtual Error file_dialog_with_options_show(const String &p_title, const String &p_current_directory, const String &p_root, const String &p_filename, bool p_show_hidden, FileDialogMode p_mode, const Vector<String> &p_filters, const TypedArray<Dictionary> &p_options, const Callable &p_callback) override;
 #endif
 
 	virtual void mouse_set_mode(MouseMode p_mode) override;

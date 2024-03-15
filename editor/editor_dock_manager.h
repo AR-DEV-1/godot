@@ -77,17 +77,20 @@ private:
 	Vector<DockSplitContainer *> hsplits;
 
 	Vector<WindowWrapper *> floating_docks;
+	Vector<Control *> bottom_docks;
 	TabContainer *dock_slot[DOCK_SLOT_MAX];
 	bool docks_visible = true;
 
 	PopupPanel *dock_select_popup = nullptr;
 	Button *dock_float = nullptr;
+	Button *dock_to_bottom = nullptr;
 	Button *dock_tab_move_left = nullptr;
 	Button *dock_tab_move_right = nullptr;
 	Control *dock_select = nullptr;
 	Rect2 dock_select_rect[DOCK_SLOT_MAX];
 	int dock_select_rect_over_idx = -1;
 	int dock_popup_selected_idx = -1;
+	int dock_bottom_selected_idx = -1;
 
 	void _dock_select_popup_theme_changed();
 	void _dock_popup_exit();
@@ -106,6 +109,8 @@ private:
 	void _dock_make_float(Control *p_control, int p_slot_index, bool p_show_window = true);
 	void _restore_floating_dock(const Dictionary &p_dock_dump, Control *p_wrapper, int p_slot_index);
 
+	void _dock_move_selected_to_bottom();
+
 protected:
 	static void _bind_methods();
 
@@ -121,12 +126,14 @@ public:
 	void load_docks_from_config(Ref<ConfigFile> p_layout, const String &p_section);
 	void update_dock_slots_visibility(bool p_keep_selected_tabs = false);
 
+	void bottom_dock_show_placement_popup(const Rect2i &p_position, Control *p_dock);
+
 	void close_all_floating_docks();
 
 	void set_docks_visible(bool p_show);
 	bool are_docks_visible() const;
 
-	void add_control_to_dock(DockSlot p_slot, Control *p_control, const String &p_name = "");
+	void add_control_to_dock(DockSlot p_slot, Control *p_control, const String &p_name = "", const Ref<Shortcut> &p_shortcut = nullptr);
 	void remove_control_from_dock(Control *p_control);
 
 	EditorDockManager();

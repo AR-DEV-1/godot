@@ -266,7 +266,7 @@ Vector<EditorPlugin *> EditorData::get_handling_sub_editors(Object *p_object) {
 	return sub_plugins;
 }
 
-EditorPlugin *EditorData::get_editor_by_name(String p_name) {
+EditorPlugin *EditorData::get_editor_by_name(const String &p_name) {
 	for (int i = editor_plugins.size() - 1; i > -1; i--) {
 		if (editor_plugins[i]->get_name() == p_name) {
 			return editor_plugins[i];
@@ -649,7 +649,9 @@ void EditorData::remove_scene(int p_idx) {
 		EditorNode::get_singleton()->emit_signal("scene_closed", edited_scene[p_idx].path);
 	}
 
-	undo_redo_manager->discard_history(edited_scene[p_idx].history_id);
+	if (undo_redo_manager->has_history(edited_scene[p_idx].history_id)) { // Might not exist if scene failed to load.
+		undo_redo_manager->discard_history(edited_scene[p_idx].history_id);
+	}
 	edited_scene.remove_at(p_idx);
 }
 
